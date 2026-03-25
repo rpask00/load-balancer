@@ -1,23 +1,23 @@
 mod strategy;
 mod worker;
-use std::{net::SocketAddr, str::FromStr, sync::Arc};
-use crate::strategy::round_robin::RoundRobinStrategy;
+use crate::strategy::least_connection::LeastConnectionStrategy;
 use crate::strategy::LoadBalancingStrategy;
 use crate::worker::Worker;
 use hyper::server::conn::http1;
 use hyper::{body::Incoming, service::service_fn, Request, Response, Uri};
 use hyper_util::client::legacy::{Error as ClientError, Error};
 use hyper_util::rt::TokioIo;
+use std::{net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::sync::RwLock;
 use tokio::{net::TcpListener, task};
 
 struct LoadBalancer {
     worker_hosts: Vec<Worker>,
-    strategy: RoundRobinStrategy,
+    strategy: Box<dyn LoadBalancingStrategy>,
 }
 
 impl LoadBalancer {
-    pub fn new(worker_hosts: Vec<String>, strategy: RoundRobinStrategy) -> Result<Self, String> {
+    pub fn new(worker_hosts: Vec<String>, strategy: Box<dyn LoadBalancingStrategy>) -> Result<Self, String> {
         if worker_hosts.is_empty() {
             return Err("No worker hosts provided".into());
         }
@@ -39,25 +39,20 @@ impl LoadBalancer {
 
         let mut worker_uri = worker.url.to_owned();
 
-        // Extract the path and query from the original request
         if let Some(path_and_query) = req.uri().path_and_query() {
             worker_uri.push_str(path_and_query.as_str());
         }
 
-        // Create a new URI from the worker URI
         let new_uri = Uri::from_str(&worker_uri).unwrap();
 
-        // Extract the headers from the original request
         let headers = req.headers().clone();
 
-        // Clone the original request's headers and method
         let mut new_req = Request::builder()
             .method(req.method())
             .uri(new_uri)
             .body(req.into_body())
             .expect("request builder");
 
-        // Copy headers from the original request
         for (key, value) in headers.iter() {
             new_req.headers_mut().insert(key, value.clone());
         }
@@ -85,7 +80,8 @@ async fn main() {
         "http://localhost:3002".to_string(),
     ];
 
-    let default_strategy = RoundRobinStrategy::new();
+    let default_strategy = Box::new(LeastConnectionStrategy::new());
+    // let default_strategy = Box::new(RoundRobinStrategy::new());
 
     let load_balancer = Arc::new(RwLock::new(
         LoadBalancer::new(worker_hosts, default_strategy).expect("failed to create load balancer"),
