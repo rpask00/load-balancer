@@ -1,5 +1,7 @@
+use crate::BoxBodyResponse;
+use http_body_util::BodyExt;
 use hyper::body::Incoming;
-use hyper::{Request, Response};
+use hyper::Request;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::{Client, Error};
 use hyper_util::rt::TokioExecutor;
@@ -22,9 +24,13 @@ impl Worker {
         }
     }
 
-    pub async fn handle(&mut self, req: Request<Incoming>) -> Result<Response<Incoming>, Error> {
+    pub async fn handle(&mut self, req: Request<Incoming>) -> Result<BoxBodyResponse, Error> {
         self.connections_count += 1;
-        let result = self.client.request(req).await;
+        let result = self
+            .client
+            .request(req)
+            .await
+            .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()));
         self.connections_count -= 1;
         result
     }

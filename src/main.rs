@@ -1,15 +1,21 @@
 mod strategy;
 mod worker;
 use crate::strategy::least_connection::LeastConnectionStrategy;
+use crate::strategy::round_robin::RoundRobinStrategy;
 use crate::strategy::LoadBalancingStrategy;
 use crate::worker::Worker;
+use bytes::Bytes;
+use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::server::conn::http1;
-use hyper::{body::Incoming, service::service_fn, Request, Response, Uri};
-use hyper_util::client::legacy::{Error as ClientError, Error};
+use hyper::{body::Incoming, service::service_fn, Method, Request, Response, Uri};
+use hyper_util::client::legacy::Error;
 use hyper_util::rt::TokioIo;
 use std::{net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::sync::RwLock;
 use tokio::{net::TcpListener, task};
+
+type BodyError = Box<dyn std::error::Error + Send + Sync>;
+type BoxBodyResponse = Response<BoxBody<Bytes, BodyError>>;
 
 struct LoadBalancer {
     worker_hosts: Vec<Worker>,
@@ -17,7 +23,10 @@ struct LoadBalancer {
 }
 
 impl LoadBalancer {
-    pub fn new(worker_hosts: Vec<String>, strategy: Box<dyn LoadBalancingStrategy>) -> Result<Self, String> {
+    pub fn new(
+        worker_hosts: Vec<String>,
+        strategy: Box<dyn LoadBalancingStrategy>,
+    ) -> Result<Self, String> {
         if worker_hosts.is_empty() {
             return Err("No worker hosts provided".into());
         }
@@ -34,7 +43,7 @@ impl LoadBalancer {
     pub async fn forward_request(
         &mut self,
         req: Request<Incoming>,
-    ) -> Result<Response<Incoming>, Error> {
+    ) -> Result<BoxBodyResponse, Error> {
         let worker = self.get_worker();
 
         let mut worker_uri = worker.url.to_owned();
@@ -57,7 +66,10 @@ impl LoadBalancer {
             new_req.headers_mut().insert(key, value.clone());
         }
 
-        worker.handle(new_req).await
+        worker
+            .handle(new_req)
+            .await
+            .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()))
     }
 
     fn get_worker(&mut self) -> &mut Worker {
@@ -68,8 +80,52 @@ impl LoadBalancer {
 async fn handle(
     req: Request<Incoming>,
     load_balancer: Arc<RwLock<LoadBalancer>>,
-) -> Result<Response<Incoming>, ClientError> {
-    load_balancer.write().await.forward_request(req).await
+) -> Result<BoxBodyResponse, Error> {
+    match (req.method(), req.uri().path()) {
+        (&Method::POST, "/strategy") => set_strategy_handler(req, load_balancer).await,
+        _ => load_balancer.write().await.forward_request(req).await,
+    }
+}
+
+async fn set_strategy_handler(
+    req: Request<Incoming>,
+    load_balancer: Arc<RwLock<LoadBalancer>>,
+) -> Result<BoxBodyResponse, Error> {
+    let body = req.collect().await.unwrap().to_bytes();
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+
+    let strategy_name = body["strategy"].as_str().unwrap_or("");
+     println!("{}", strategy_name);
+
+    match strategy_from_name(strategy_name) {
+        Some(strategy) => {
+            load_balancer.write().await.strategy = strategy;
+            Ok(Response::builder()
+                .status(200)
+                .body(
+                    Full::new(Bytes::from("ok"))
+                        .map_err(|_| unreachable!())
+                        .boxed(),
+                )
+                .unwrap())
+        }
+        None => Ok(Response::builder()
+            .status(400)
+            .body(
+                Full::new(Bytes::from("unknown strategy"))
+                    .map_err(|_| unreachable!())
+                    .boxed(),
+            )
+            .unwrap()),
+    }
+}
+
+fn strategy_from_name(name: &str) -> Option<Box<dyn LoadBalancingStrategy>> {
+    match name {
+        "least_connection" => Some(Box::new(LeastConnectionStrategy::new())),
+        "round_robin" => Some(Box::new(RoundRobinStrategy::new())),
+        _ => None,
+    }
 }
 
 #[tokio::main]

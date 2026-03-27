@@ -9,10 +9,13 @@ impl LoadBalancingStrategy for LeastConnectionStrategy {
     }
 
     fn select_worker<'a>(&'a mut self, workers: &'a mut Vec<Worker>) -> &'a mut Worker {
+         println!("{}", "Least connection is selecting worker");
+        
+        
         workers
             .iter_mut()
             .reduce(|a, b| {
-                if (b.connections_count > a.connections_count) {
+                if b.connections_count > a.connections_count {
                     b
                 } else {
                     a

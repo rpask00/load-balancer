@@ -13,6 +13,8 @@ impl LoadBalancingStrategy for RoundRobinStrategy {
     }
 
     fn select_worker<'a>(&mut self, workers: &'a mut Vec<Worker>) -> &'a mut Worker {
+        println!("{}", "Round Robin is selecting worker");
+
         let workers_len = workers.len();
         let current_worker = &mut workers[self.current_worker_index];
         self.current_worker_index = (self.current_worker_index + 1) % workers_len;
