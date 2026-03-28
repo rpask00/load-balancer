@@ -18,7 +18,7 @@ type BodyError = Box<dyn std::error::Error + Send + Sync>;
 type BoxBodyResponse = Response<BoxBody<Bytes, BodyError>>;
 
 struct LoadBalancer {
-    worker_hosts: Vec<Worker>,
+    workers: Vec<Worker>,
     strategy: Box<dyn LoadBalancingStrategy>,
 }
 
@@ -32,7 +32,7 @@ impl LoadBalancer {
         }
 
         Ok(LoadBalancer {
-            worker_hosts: worker_hosts
+            workers: worker_hosts
                 .into_iter()
                 .map(|url| Worker::new(url))
                 .collect(),
@@ -73,7 +73,7 @@ impl LoadBalancer {
     }
 
     fn get_worker(&mut self) -> &mut Worker {
-        self.strategy.select_worker(&mut self.worker_hosts)
+        self.strategy.select_worker(&mut self.workers)
     }
 }
 
