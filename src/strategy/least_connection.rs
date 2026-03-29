@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use crate::strategy::LoadBalancingStrategy;
 use crate::worker::Worker;
 
@@ -8,19 +9,20 @@ impl LoadBalancingStrategy for LeastConnectionStrategy {
         LeastConnectionStrategy {}
     }
 
-    fn select_worker<'a>(&'a mut self, workers: &'a mut Vec<Worker>) -> &'a mut Worker {
+    fn select_worker(&self, workers: &Vec<Arc<Worker>>) ->  Arc<Worker> {
          println!("{}", "Least connection is selecting worker");
         
         
         workers
-            .iter_mut()
+            .iter()
             .reduce(|a, b| {
-                if b.connections_count > a.connections_count {
+                if Arc::strong_count(b) > Arc::strong_count(a) {
                     b
                 } else {
                     a
                 }
             })
             .unwrap()
+            .clone()
     }
 }

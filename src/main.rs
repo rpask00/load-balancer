@@ -18,7 +18,7 @@ type BodyError = Box<dyn std::error::Error + Send + Sync>;
 type BoxBodyResponse = Response<BoxBody<Bytes, BodyError>>;
 
 struct LoadBalancer {
-    workers: Vec<Worker>,
+    workers: Vec<Arc<Worker>>,
     strategy: Box<dyn LoadBalancingStrategy>,
 }
 
@@ -34,16 +34,13 @@ impl LoadBalancer {
         Ok(LoadBalancer {
             workers: worker_hosts
                 .into_iter()
-                .map(|url| Worker::new(url))
+                .map(|url| Arc::new(Worker::new(url)))
                 .collect(),
             strategy,
         })
     }
 
-    pub async fn forward_request(
-        &mut self,
-        req: Request<Incoming>,
-    ) -> Result<BoxBodyResponse, Error> {
+    pub async fn forward_request(&self, req: Request<Incoming>) -> Result<BoxBodyResponse, Error> {
         let worker = self.get_worker();
 
         let mut worker_uri = worker.url.to_owned();
@@ -72,8 +69,8 @@ impl LoadBalancer {
             .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()))
     }
 
-    fn get_worker(&mut self) -> &mut Worker {
-        self.strategy.select_worker(&mut self.workers)
+    fn get_worker(&self) -> Arc<Worker> {
+        self.strategy.select_worker(&self.workers)
     }
 }
 
@@ -83,7 +80,7 @@ async fn handle(
 ) -> Result<BoxBodyResponse, Error> {
     match (req.method(), req.uri().path()) {
         (&Method::POST, "/strategy") => set_strategy_handler(req, load_balancer).await,
-        _ => load_balancer.write().await.forward_request(req).await,
+        _ => load_balancer.read().await.forward_request(req).await,
     }
 }
 
@@ -95,7 +92,7 @@ async fn set_strategy_handler(
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
 
     let strategy_name = body["strategy"].as_str().unwrap_or("");
-     println!("{}", strategy_name);
+    println!("{}", strategy_name);
 
     match strategy_from_name(strategy_name) {
         Some(strategy) => {

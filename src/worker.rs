@@ -9,7 +9,6 @@ use hyper_util::rt::TokioExecutor;
 pub struct Worker {
     client: Client<HttpConnector, Incoming>,
     pub url: String,
-    pub connections_count: u32,
 }
 
 impl Worker {
@@ -17,21 +16,15 @@ impl Worker {
         let connector = HttpConnector::new();
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
-        Worker {
-            url,
-            client,
-            connections_count: 0,
-        }
+        Worker { url, client }
     }
 
-    pub async fn handle(&mut self, req: Request<Incoming>) -> Result<BoxBodyResponse, Error> {
-        self.connections_count += 1;
+    pub async fn handle(&self, req: Request<Incoming>) -> Result<BoxBodyResponse, Error> {
         let result = self
             .client
             .request(req)
             .await
             .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()));
-        self.connections_count -= 1;
         result
     }
 }

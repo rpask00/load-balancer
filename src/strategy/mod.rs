@@ -1,10 +1,11 @@
+use std::sync::Arc;
 use crate::worker::Worker;
 
 pub trait LoadBalancingStrategy: Send + Sync {
     fn new() -> Self
     where
         Self: Sized;
-    fn select_worker<'a>(&'a mut self, workers: &'a mut Vec<Worker>) -> &'a mut Worker;
+    fn select_worker(&self, workers: &Vec<Arc<Worker>>) -> Arc<Worker>;
 }
 
 pub mod least_connection;
