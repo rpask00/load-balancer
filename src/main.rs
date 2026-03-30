@@ -2,13 +2,13 @@ mod strategy;
 mod worker;
 use crate::strategy::least_connection::LeastConnectionStrategy;
 use crate::strategy::round_robin::RoundRobinStrategy;
-use crate::strategy::LoadBalancingStrategy;
+use crate::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
 use crate::worker::Worker;
 use bytes::Bytes;
+use color_eyre::eyre::{eyre, Result};
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::server::conn::http1;
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response, Uri};
-use hyper_util::client::legacy::Error;
 use hyper_util::rt::TokioIo;
 use std::{net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::sync::RwLock;
@@ -40,8 +40,8 @@ impl LoadBalancer {
         })
     }
 
-    pub async fn forward_request(&self, req: Request<Incoming>) -> Result<BoxBodyResponse, Error> {
-        let worker = self.get_worker();
+    pub async fn forward_request(&self, req: Request<Incoming>) -> Result<BoxBodyResponse> {
+        let worker = self.strategy.select_worker(&self.workers)?;
 
         let mut worker_uri = worker.url.to_owned();
 
@@ -49,7 +49,7 @@ impl LoadBalancer {
             worker_uri.push_str(path_and_query.as_str());
         }
 
-        let new_uri = Uri::from_str(&worker_uri).unwrap();
+        let new_uri = Uri::from_str(&worker_uri)?;
 
         let headers = req.headers().clone();
 
@@ -67,17 +67,14 @@ impl LoadBalancer {
             .handle(new_req)
             .await
             .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()))
-    }
-
-    fn get_worker(&self) -> Arc<Worker> {
-        self.strategy.select_worker(&self.workers)
+            .map_err(|e| e.into())
     }
 }
 
 async fn handle(
     req: Request<Incoming>,
     load_balancer: Arc<RwLock<LoadBalancer>>,
-) -> Result<BoxBodyResponse, Error> {
+) -> Result<BoxBodyResponse> {
     match (req.method(), req.uri().path()) {
         (&Method::POST, "/strategy") => set_strategy_handler(req, load_balancer).await,
         _ => load_balancer.read().await.forward_request(req).await,
@@ -87,41 +84,36 @@ async fn handle(
 async fn set_strategy_handler(
     req: Request<Incoming>,
     load_balancer: Arc<RwLock<LoadBalancer>>,
-) -> Result<BoxBodyResponse, Error> {
-    let body = req.collect().await.unwrap().to_bytes();
+) -> Result<BoxBodyResponse> {
+    let body = req.collect().await?.to_bytes();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
 
-    let strategy_name = body["strategy"].as_str().unwrap_or("");
-    println!("{}", strategy_name);
+    let strategy_name = body["strategy"]
+        .as_str()
+        .ok_or(eyre!("Strategy not found in request body!"))?;
 
-    match strategy_from_name(strategy_name) {
-        Some(strategy) => {
-            load_balancer.write().await.strategy = strategy;
-            Ok(Response::builder()
-                .status(200)
-                .body(
-                    Full::new(Bytes::from("ok"))
-                        .map_err(|_| unreachable!())
-                        .boxed(),
-                )
-                .unwrap())
-        }
-        None => Ok(Response::builder()
-            .status(400)
-            .body(
-                Full::new(Bytes::from("unknown strategy"))
-                    .map_err(|_| unreachable!())
-                    .boxed(),
-            )
-            .unwrap()),
+    let strategy = strategy_from_name(strategy_name);
+
+    let (status, response_msg) = match strategy.is_ok() {
+        true => (200, "ok"),
+        false => (400, "unknown strategy"),
+    };
+
+    if let Ok(strategy) = strategy {
+        load_balancer.write().await.strategy = strategy;
     }
+
+    Ok(Response::builder().status(status).body(
+        Full::new(Bytes::from(response_msg))
+            .map_err(|_| unreachable!())
+            .boxed(),
+    )?)
 }
 
-fn strategy_from_name(name: &str) -> Option<Box<dyn LoadBalancingStrategy>> {
-    match name {
-        "least_connection" => Some(Box::new(LeastConnectionStrategy::new())),
-        "round_robin" => Some(Box::new(RoundRobinStrategy::new())),
-        _ => None,
+fn strategy_from_name(name: &str) -> Result<Box<dyn LoadBalancingStrategy>> {
+    match LoadBalancerStrategy::from_str(name)? {
+        LoadBalancerStrategy::RoundRobin => Ok(Box::new(LeastConnectionStrategy::new())),
+        LoadBalancerStrategy::LeastConnections => Ok(Box::new(RoundRobinStrategy::new())),
     }
 }
 
