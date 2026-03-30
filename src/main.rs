@@ -26,9 +26,9 @@ impl LoadBalancer {
     pub fn new(
         worker_hosts: Vec<String>,
         strategy: Box<dyn LoadBalancingStrategy>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self> {
         if worker_hosts.is_empty() {
-            return Err("No worker hosts provided".into());
+            return Err(eyre!("No worker hosts provided"));
         }
 
         Ok(LoadBalancer {
