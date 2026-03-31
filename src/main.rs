@@ -40,11 +40,11 @@ impl LoadBalancer {
         })
     }
 
-    pub async fn forward_request(&self, req: Request<Incoming>) -> Result<BoxBodyResponse> {
-        let worker = self.strategy.select_worker(&self.workers)?;
-
-        let mut worker_uri = worker.url.to_owned();
-
+    pub async fn prepare_request(
+        &self,
+        mut worker_uri: String,
+        req: Request<Incoming>,
+    ) -> Result<Request<Incoming>> {
         if let Some(path_and_query) = req.uri().path_and_query() {
             worker_uri.push_str(path_and_query.as_str());
         }
@@ -63,11 +63,7 @@ impl LoadBalancer {
             new_req.headers_mut().insert(key, value.clone());
         }
 
-        worker
-            .handle(new_req)
-            .await
-            .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()))
-            .map_err(|e| e.into())
+        Ok(new_req)
     }
 }
 
@@ -77,7 +73,20 @@ async fn handle(
 ) -> Result<BoxBodyResponse> {
     match (req.method(), req.uri().path()) {
         (&Method::POST, "/strategy") => set_strategy_handler(req, load_balancer).await,
-        _ => load_balancer.read().await.forward_request(req).await,
+        _ => {
+            let (worker, req) = {
+                let lb_lock = load_balancer.read().await;
+                let worker = lb_lock.strategy.select_worker(&lb_lock.workers)?;
+                let req = lb_lock.prepare_request(worker.url.clone(), req).await?;
+                (worker, req)
+            };
+
+            worker
+                .handle(req)
+                .await
+                .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()))
+                .map_err(|e| e.into())
+        }
     }
 }
 
