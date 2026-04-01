@@ -40,7 +40,7 @@ impl LoadBalancer {
         })
     }
 
-    pub  fn prepare_request(
+    pub fn prepare_request(
         &self,
         mut worker_uri: String,
         req: Request<Incoming>,
