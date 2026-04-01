@@ -40,7 +40,7 @@ impl LoadBalancer {
         })
     }
 
-    pub async fn prepare_request(
+    pub  fn prepare_request(
         &self,
         mut worker_uri: String,
         req: Request<Incoming>,
@@ -77,7 +77,7 @@ async fn handle(
             let (worker, req) = {
                 let lb_lock = load_balancer.read().await;
                 let worker = lb_lock.strategy.select_worker(&lb_lock.workers)?;
-                let req = lb_lock.prepare_request(worker.url.clone(), req).await?;
+                let req = lb_lock.prepare_request(worker.url.clone(), req)?;
                 (worker, req)
             };
 
