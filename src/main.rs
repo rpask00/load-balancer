@@ -1,77 +1,129 @@
-use std::{net::SocketAddr, str::FromStr, sync::Arc};
-
-use hyper::{body::Incoming, service::service_fn, Request, Response, Uri};
+mod strategy;
+mod worker;
+use crate::strategy::least_connection::LeastConnectionStrategy;
+use crate::strategy::round_robin::RoundRobinStrategy;
+use crate::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
+use crate::worker::Worker;
+use bytes::Bytes;
+use color_eyre::eyre::{eyre, Result};
+use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::server::conn::http1;
-use hyper_util::client::legacy::connect::HttpConnector;
-use hyper_util::client::legacy::{Client, Error as ClientError, ResponseFuture};
-use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper::{body::Incoming, service::service_fn, Method, Request, Response, Uri};
+use hyper_util::rt::TokioIo;
+use std::{net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::sync::RwLock;
 use tokio::{net::TcpListener, task};
 
+type BodyError = Box<dyn std::error::Error + Send + Sync>;
+type BoxBodyResponse = Response<BoxBody<Bytes, BodyError>>;
+
 struct LoadBalancer {
-    client: Client<HttpConnector, Incoming>,
-    worker_hosts: Vec<String>,
-    current_worker: usize,
+    workers: Vec<Arc<Worker>>,
+    strategy: Box<dyn LoadBalancingStrategy>,
 }
 
 impl LoadBalancer {
-    pub fn new(worker_hosts: Vec<String>) -> Result<Self, String> {
+    pub fn new(
+        worker_hosts: Vec<String>,
+        strategy: Box<dyn LoadBalancingStrategy>,
+    ) -> Result<Self> {
         if worker_hosts.is_empty() {
-            return Err("No worker hosts provided".into());
+            return Err(eyre!("No worker hosts provided"));
         }
 
-        let connector = HttpConnector::new();
-        let client = Client::builder(TokioExecutor::new()).build(connector);
-
         Ok(LoadBalancer {
-            client,
-            worker_hosts,
-            current_worker: 0,
+            workers: worker_hosts
+                .into_iter()
+                .map(|url| Arc::new(Worker::new(url)))
+                .collect(),
+            strategy,
         })
     }
 
-    pub fn forward_request(&mut self, req: Request<Incoming>) -> ResponseFuture {
-        let mut worker_uri = self.get_worker().to_owned();
-
-        // Extract the path and query from the original request
+    pub fn prepare_request(
+        &self,
+        mut worker_uri: String,
+        req: Request<Incoming>,
+    ) -> Result<Request<Incoming>> {
         if let Some(path_and_query) = req.uri().path_and_query() {
             worker_uri.push_str(path_and_query.as_str());
         }
 
-        // Create a new URI from the worker URI
-        let new_uri = Uri::from_str(&worker_uri).unwrap();
+        let new_uri = Uri::from_str(&worker_uri)?;
 
-        // Extract the headers from the original request
         let headers = req.headers().clone();
 
-        // Clone the original request's headers and method
         let mut new_req = Request::builder()
             .method(req.method())
             .uri(new_uri)
             .body(req.into_body())
             .expect("request builder");
 
-        // Copy headers from the original request
         for (key, value) in headers.iter() {
             new_req.headers_mut().insert(key, value.clone());
         }
 
-        self.client.request(new_req)
-    }
-
-    fn get_worker(&mut self) -> &str {
-        // Use a round-robin strategy to select a worker
-        let worker = self.worker_hosts.get(self.current_worker).unwrap();
-        self.current_worker = (self.current_worker + 1) % self.worker_hosts.len();
-        worker
+        Ok(new_req)
     }
 }
 
 async fn handle(
     req: Request<Incoming>,
     load_balancer: Arc<RwLock<LoadBalancer>>,
-) -> Result<Response<Incoming>, ClientError> {
-    load_balancer.write().await.forward_request(req).await
+) -> Result<BoxBodyResponse> {
+    match (req.method(), req.uri().path()) {
+        (&Method::POST, "/strategy") => set_strategy_handler(req, load_balancer).await,
+        _ => {
+            let (worker, req) = {
+                let lb_lock = load_balancer.read().await;
+                let worker = lb_lock.strategy.select_worker(&lb_lock.workers)?;
+                let req = lb_lock.prepare_request(worker.url.clone(), req)?;
+                (worker, req)
+            };
+
+            worker
+                .handle(req)
+                .await
+                .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()))
+                .map_err(|e| e.into())
+        }
+    }
+}
+
+async fn set_strategy_handler(
+    req: Request<Incoming>,
+    load_balancer: Arc<RwLock<LoadBalancer>>,
+) -> Result<BoxBodyResponse> {
+    let body = req.collect().await?.to_bytes();
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+
+    let strategy_name = body["strategy"]
+        .as_str()
+        .ok_or(eyre!("Strategy not found in request body!"))?;
+
+    let strategy = strategy_from_name(strategy_name);
+
+    let (status, response_msg) = match strategy.is_ok() {
+        true => (200, "ok"),
+        false => (400, "unknown strategy"),
+    };
+
+    if let Ok(strategy) = strategy {
+        load_balancer.write().await.strategy = strategy;
+    }
+
+    Ok(Response::builder().status(status).body(
+        Full::new(Bytes::from(response_msg))
+            .map_err(|_| unreachable!())
+            .boxed(),
+    )?)
+}
+
+fn strategy_from_name(name: &str) -> Result<Box<dyn LoadBalancingStrategy>> {
+    match LoadBalancerStrategy::from_str(name)? {
+        LoadBalancerStrategy::RoundRobin => Ok(Box::new(LeastConnectionStrategy::new())),
+        LoadBalancerStrategy::LeastConnections => Ok(Box::new(RoundRobinStrategy::new())),
+    }
 }
 
 #[tokio::main]
@@ -79,10 +131,14 @@ async fn main() {
     let worker_hosts = vec![
         "http://localhost:3000".to_string(),
         "http://localhost:3001".to_string(),
+        "http://localhost:3002".to_string(),
     ];
 
+    let default_strategy = Box::new(LeastConnectionStrategy::new());
+    // let default_strategy = Box::new(RoundRobinStrategy::new());
+
     let load_balancer = Arc::new(RwLock::new(
-        LoadBalancer::new(worker_hosts).expect("failed to create load balancer"),
+        LoadBalancer::new(worker_hosts, default_strategy).expect("failed to create load balancer"),
     ));
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
