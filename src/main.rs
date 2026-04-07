@@ -1,21 +1,17 @@
-mod strategy;
-mod worker;
-use crate::strategy::least_connection::LeastConnectionStrategy;
-use crate::strategy::round_robin::RoundRobinStrategy;
-use crate::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
-use crate::worker::Worker;
 use bytes::Bytes;
 use color_eyre::eyre::{eyre, Result};
-use http_body_util::{combinators::BoxBody, BodyExt, Full};
+use http_body_util::{BodyExt, Full};
 use hyper::server::conn::http1;
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response, Uri};
 use hyper_util::rt::TokioIo;
+use load_balancer::strategy::least_connection::LeastConnectionStrategy;
+use load_balancer::strategy::round_robin::RoundRobinStrategy;
+use load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
+use load_balancer::worker::Worker;
+use load_balancer::BoxBodyResponse;
 use std::{net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::sync::RwLock;
 use tokio::{net::TcpListener, task};
-
-type BodyError = Box<dyn std::error::Error + Send + Sync>;
-type BoxBodyResponse = Response<BoxBody<Bytes, BodyError>>;
 
 struct LoadBalancer {
     workers: Vec<Arc<Worker>>,
