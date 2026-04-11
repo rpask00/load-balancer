@@ -1,3 +1,4 @@
+use std::io::Write;
 use crate::BoxBodyResponse;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
@@ -35,5 +36,13 @@ impl Worker {
             .await
             .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()));
         result
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        let mut child = self.child.write().unwrap();
+        child.stdin.as_mut().unwrap().write_all(b"shutdown\n").unwrap();
+        child.wait().unwrap();
     }
 }
