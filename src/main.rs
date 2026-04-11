@@ -23,18 +23,26 @@ struct LoadBalancer {
 }
 
 impl LoadBalancer {
-    pub fn new(worker_ports: Vec<u32>, strategy: Box<dyn LoadBalancingStrategy>) -> Result<Self> {
-        if worker_ports.is_empty() {
-            return Err(eyre!("No worker hosts provided"));
-        }
-
+    pub fn new(strategy: Box<dyn LoadBalancingStrategy>) -> Result<Self> {
         Ok(LoadBalancer {
-            workers: worker_ports
-                .into_iter()
-                .map(|port| Arc::new(Worker::new(port)))
-                .collect(),
+            workers: vec![],
             strategy,
         })
+    }
+
+    fn next_port(&self) -> u32 {
+        let mut port = 3000;
+        let mut used_ports = self.workers.iter().map(|w| w.port).collect::<Vec<_>>();
+        used_ports.sort();
+
+        for used_port in used_ports {
+            if used_port != port {
+                return port;
+            };
+            port += 1;
+        }
+
+        port
     }
 
     pub fn prepare_request(
@@ -62,6 +70,20 @@ impl LoadBalancer {
 
         Ok(new_req)
     }
+
+    pub fn spawn_worker(&mut self) {
+        let port = self.next_port();
+        self.workers.push(Arc::new(Worker::new(port)));
+    }
+
+    pub async fn close_worker(&mut self, worker_index: usize) {
+        let worker = self.workers.remove(worker_index);
+
+        let _ = task::spawn_blocking(move || {
+            drop(worker);
+        })
+        .await;
+    }
 }
 
 async fn handle(
@@ -74,7 +96,8 @@ async fn handle(
             let (worker, req) = {
                 let lb_lock = load_balancer.read().await;
                 let worker = lb_lock.strategy.select_worker(&lb_lock.workers)?;
-                let req = lb_lock.prepare_request(format!("http://localhost:{}", worker.port), req)?;
+                let req =
+                    lb_lock.prepare_request(format!("http://localhost:{}", worker.port), req)?;
                 (worker, req)
             };
 
@@ -125,14 +148,17 @@ fn strategy_from_name(name: &str) -> Result<Box<dyn LoadBalancingStrategy>> {
 
 #[tokio::main]
 async fn main() {
-    let worker_ports = vec![3000, 3001, 3002];
-
     let default_strategy = Box::new(LeastConnectionStrategy::new());
     // let default_strategy = Box::new(RoundRobinStrategy::new());
 
     let load_balancer = Arc::new(RwLock::new(
-        LoadBalancer::new(worker_ports, default_strategy).expect("failed to create load balancer"),
+        LoadBalancer::new(default_strategy).expect("failed to create load balancer"),
     ));
+
+    load_balancer.write().await.spawn_worker();
+    load_balancer.write().await.spawn_worker();
+    load_balancer.write().await.spawn_worker();
+    load_balancer.write().await.close_worker(0).await;
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
 
