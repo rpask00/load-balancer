@@ -17,3 +17,4 @@ chrono = "0.4.44"
 reqwest = "0.13.2"
 color-eyre = "0.6.5"
 strum = { version = "0.26", features = ["derive"] }
+axum = "0.8.8"
