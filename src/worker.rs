@@ -5,18 +5,27 @@ use hyper::Request;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::{Client, Error};
 use hyper_util::rt::TokioExecutor;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, RwLock};
 
 pub struct Worker {
     client: Client<HttpConnector, Incoming>,
-    pub url: String,
+    pub port: u32,
+    child: Arc<RwLock<Child>>,
 }
 
 impl Worker {
-    pub fn new(url: String) -> Self {
+    pub fn new(port: u32) -> Self {
         let connector = HttpConnector::new();
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
-        Worker { url, client }
+        let child = Command::new("./target/debug/worker")
+            .arg(port.to_string())
+            .stdin(Stdio::piped()) // open a pipe to child's stdin
+            .spawn()
+            .unwrap();
+
+        Worker { port, client, child: Arc::new(RwLock::new(child)), }
     }
 
     pub async fn handle(&self, req: Request<Incoming>) -> Result<BoxBodyResponse, Error> {

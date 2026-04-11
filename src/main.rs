@@ -23,18 +23,15 @@ struct LoadBalancer {
 }
 
 impl LoadBalancer {
-    pub fn new(
-        worker_hosts: Vec<String>,
-        strategy: Box<dyn LoadBalancingStrategy>,
-    ) -> Result<Self> {
-        if worker_hosts.is_empty() {
+    pub fn new(worker_ports: Vec<u32>, strategy: Box<dyn LoadBalancingStrategy>) -> Result<Self> {
+        if worker_ports.is_empty() {
             return Err(eyre!("No worker hosts provided"));
         }
 
         Ok(LoadBalancer {
-            workers: worker_hosts
+            workers: worker_ports
                 .into_iter()
-                .map(|url| Arc::new(Worker::new(url)))
+                .map(|port| Arc::new(Worker::new(port)))
                 .collect(),
             strategy,
         })
@@ -77,7 +74,7 @@ async fn handle(
             let (worker, req) = {
                 let lb_lock = load_balancer.read().await;
                 let worker = lb_lock.strategy.select_worker(&lb_lock.workers)?;
-                let req = lb_lock.prepare_request(worker.url.clone(), req)?;
+                let req = lb_lock.prepare_request(format!("http://localhost:{}", worker.port), req)?;
                 (worker, req)
             };
 
@@ -128,17 +125,13 @@ fn strategy_from_name(name: &str) -> Result<Box<dyn LoadBalancingStrategy>> {
 
 #[tokio::main]
 async fn main() {
-    let worker_hosts = vec![
-        "http://localhost:3000".to_string(),
-        "http://localhost:3001".to_string(),
-        "http://localhost:3002".to_string(),
-    ];
+    let worker_ports = vec![3000, 3001, 3002];
 
     let default_strategy = Box::new(LeastConnectionStrategy::new());
     // let default_strategy = Box::new(RoundRobinStrategy::new());
 
     let load_balancer = Arc::new(RwLock::new(
-        LoadBalancer::new(worker_hosts, default_strategy).expect("failed to create load balancer"),
+        LoadBalancer::new(worker_ports, default_strategy).expect("failed to create load balancer"),
     ));
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
