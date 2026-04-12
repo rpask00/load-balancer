@@ -1,14 +1,15 @@
+mod load_balancer;
 mod strategy;
 mod worker;
+
+use crate::load_balancer::LoadBalancer;
 use crate::strategy::least_connection::LeastConnectionStrategy;
-use crate::strategy::round_robin::RoundRobinStrategy;
-use crate::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
-use crate::worker::Worker;
+use crate::strategy::LoadBalancingStrategy;
 use bytes::Bytes;
 use color_eyre::eyre::{eyre, Result};
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::server::conn::http1;
-use hyper::{body::Incoming, service::service_fn, Method, Request, Response, Uri};
+use hyper::{body::Incoming, service::service_fn, Method, Request, Response};
 use hyper_util::rt::TokioIo;
 use std::{net::SocketAddr, str::FromStr, sync::Arc};
 use tokio::sync::RwLock;
@@ -16,75 +17,6 @@ use tokio::{net::TcpListener, task};
 
 type BodyError = Box<dyn std::error::Error + Send + Sync>;
 type BoxBodyResponse = Response<BoxBody<Bytes, BodyError>>;
-
-struct LoadBalancer {
-    workers: Vec<Arc<Worker>>,
-    strategy: Box<dyn LoadBalancingStrategy>,
-}
-
-impl LoadBalancer {
-    pub fn new(strategy: Box<dyn LoadBalancingStrategy>) -> Result<Self> {
-        Ok(LoadBalancer {
-            workers: vec![],
-            strategy,
-        })
-    }
-
-    fn next_port(&self) -> u32 {
-        let mut port = 3000;
-        let mut used_ports = self.workers.iter().map(|w| w.port).collect::<Vec<_>>();
-        used_ports.sort();
-
-        for used_port in used_ports {
-            if used_port != port {
-                return port;
-            };
-            port += 1;
-        }
-
-        port
-    }
-
-    pub fn prepare_request(
-        &self,
-        mut worker_uri: String,
-        req: Request<Incoming>,
-    ) -> Result<Request<Incoming>> {
-        if let Some(path_and_query) = req.uri().path_and_query() {
-            worker_uri.push_str(path_and_query.as_str());
-        }
-
-        let new_uri = Uri::from_str(&worker_uri)?;
-
-        let headers = req.headers().clone();
-
-        let mut new_req = Request::builder()
-            .method(req.method())
-            .uri(new_uri)
-            .body(req.into_body())
-            .expect("Failed to build request");
-
-        for (key, value) in headers.iter() {
-            new_req.headers_mut().insert(key, value.clone());
-        }
-
-        Ok(new_req)
-    }
-
-    pub fn spawn_worker(&mut self, num_threads: u8) {
-        let port = self.next_port();
-        self.workers.push(Arc::new(Worker::new(port, num_threads)));
-    }
-
-    pub async fn close_worker(&mut self, worker_index: usize) {
-        let worker = self.workers.remove(worker_index);
-
-        let _ = task::spawn_blocking(move || {
-            drop(worker);
-        })
-        .await;
-    }
-}
 
 async fn handle(
     req: Request<Incoming>,
@@ -121,29 +53,21 @@ async fn set_strategy_handler(
         .as_str()
         .ok_or(eyre!("Strategy not found in request body!"))?;
 
-    let strategy = strategy_from_name(strategy_name);
+    let result = load_balancer
+        .write()
+        .await
+        .set_strategy_handler(strategy_name);
 
-    let (status, response_msg) = match strategy.is_ok() {
+    let (status, response_msg) = match result.is_ok() {
         true => (200, "ok"),
         false => (400, "unknown strategy"),
     };
-
-    if let Ok(strategy) = strategy {
-        load_balancer.write().await.strategy = strategy;
-    }
 
     Ok(Response::builder().status(status).body(
         Full::new(Bytes::from(response_msg))
             .map_err(|_| unreachable!())
             .boxed(),
     )?)
-}
-
-fn strategy_from_name(name: &str) -> Result<Box<dyn LoadBalancingStrategy>> {
-    match LoadBalancerStrategy::from_str(name)? {
-        LoadBalancerStrategy::RoundRobin => Ok(Box::new(LeastConnectionStrategy::new())),
-        LoadBalancerStrategy::LeastConnections => Ok(Box::new(RoundRobinStrategy::new())),
-    }
 }
 
 #[tokio::main]
