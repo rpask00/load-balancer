@@ -62,7 +62,7 @@ impl LoadBalancer {
             .method(req.method())
             .uri(new_uri)
             .body(req.into_body())
-            .expect("request builder");
+            .expect("Failed to build request");
 
         for (key, value) in headers.iter() {
             new_req.headers_mut().insert(key, value.clone());
@@ -71,9 +71,9 @@ impl LoadBalancer {
         Ok(new_req)
     }
 
-    pub fn spawn_worker(&mut self) {
+    pub fn spawn_worker(&mut self, num_threads: u8) {
         let port = self.next_port();
-        self.workers.push(Arc::new(Worker::new(port)));
+        self.workers.push(Arc::new(Worker::new(port, num_threads)));
     }
 
     pub async fn close_worker(&mut self, worker_index: usize) {
@@ -155,10 +155,11 @@ async fn main() {
         LoadBalancer::new(default_strategy).expect("failed to create load balancer"),
     ));
 
-    load_balancer.write().await.spawn_worker();
-    load_balancer.write().await.spawn_worker();
-    load_balancer.write().await.spawn_worker();
-    load_balancer.write().await.close_worker(0).await;
+    load_balancer.write().await.spawn_worker(5);
+    // load_balancer.write().await.spawn_worker(1);
+    // load_balancer.write().await.spawn_worker(1);
+    // load_balancer.write().await.spawn_worker(1);
+    // load_balancer.write().await.spawn_worker(1);
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
 
