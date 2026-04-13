@@ -48,13 +48,14 @@ impl Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        let mut child = self.child.write().unwrap();
+        let mut child = self.child.write().expect("Failed to acquire write lock on child process");
         child
             .stdin
             .as_mut()
-            .unwrap()
+            .expect("Failed to open stdin for child process")
             .write_all(b"shutdown\n")
-            .unwrap();
+            .expect("Failed to write to child process");
+
         child.wait().unwrap();
     }
 }
