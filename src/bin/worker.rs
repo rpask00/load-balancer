@@ -2,10 +2,22 @@ use axum::{
     extract::{Request, State},
     Router,
 };
-use std::{env, net::SocketAddr, time::Duration};
+use clap::Parser;
+use std::{net::SocketAddr, time::Duration};
 use tokio::net::TcpListener;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
+
+#[derive(Parser)]
+struct Args {
+    /// Port to listen on
+    #[arg(short, long, default_value_t = 3000)]
+    port: u16,
+
+    /// Number of worker threads
+    #[arg(short, long, default_value_t = 1)]
+    num_threads: usize,
+}
 
 async fn worker_handler(State(port): State<u16>, req: Request) -> String {
     let message = format!(
@@ -25,27 +37,18 @@ async fn worker_handler(State(port): State<u16>, req: Request) -> String {
 }
 
 fn main() {
-    let port = env::args()
-        .nth(1)
-        .and_then(|port| port.parse().ok())
-        .or_else(|| env::var("PORT").ok().and_then(|port| port.parse().ok()))
-        .unwrap_or(3000);
-
-    let num_threads = env::args()
-        .nth(2)
-        .and_then(|num_threads| num_threads.parse().ok())
-        .unwrap_or(1);
+    let args = Args::parse();
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(num_threads)
+        .worker_threads(args.num_threads)
         .enable_all()
         .build()
         .unwrap();
 
     runtime.block_on(async {
-        let app = Router::new().fallback(worker_handler).with_state(port);
+        let app = Router::new().fallback(worker_handler).with_state(args.port);
 
-        let addr = SocketAddr::from(([127, 0, 0, 1], port));
+        let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
         println!("worker listening on http://{}", addr);
 
         let listener = TcpListener::bind(addr)

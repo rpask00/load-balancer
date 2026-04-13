@@ -22,7 +22,9 @@ impl Worker {
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
         let child = Command::new("./target/debug/worker")
+            .arg("--port")
             .arg(port.to_string())
+            .arg("--num-threads")
             .arg(num_threads.to_string())
             .stdin(Stdio::piped()) // open a pipe to child's stdin
             .spawn()
