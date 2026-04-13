@@ -10,14 +10,14 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, RwLock};
 
 pub struct Worker {
-   pub port: u32,
+    pub port: u16,
     client: Client<HttpConnector, Incoming>,
     num_threads: u8,
     child: Arc<RwLock<Child>>,
 }
 
 impl Worker {
-    pub fn new(port: u32, num_threads: u8) -> Self {
+    pub fn new(port: u16, num_threads: u8) -> Self {
         let connector = HttpConnector::new();
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
@@ -49,7 +49,12 @@ impl Worker {
 impl Drop for Worker {
     fn drop(&mut self) {
         let mut child = self.child.write().unwrap();
-        child.stdin.as_mut().unwrap().write_all(b"shutdown\n").unwrap();
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"shutdown\n")
+            .unwrap();
         child.wait().unwrap();
     }
 }
