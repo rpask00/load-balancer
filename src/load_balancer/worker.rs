@@ -1,4 +1,3 @@
-use crate::BoxBodyResponse;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::Request;
@@ -8,6 +7,7 @@ use hyper_util::rt::TokioExecutor;
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, RwLock};
+use crate::load_balancer::BoxBodyResponse;
 
 pub struct Worker {
     pub port: u16,
@@ -21,7 +21,7 @@ impl Worker {
         let connector = HttpConnector::new();
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
-        let child = Command::new("./target/debug/worker")
+        let child = Command::new("../../target/debug/worker")
             .arg("--port")
             .arg(port.to_string())
             .arg("--num-threads")

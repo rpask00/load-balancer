@@ -1,7 +1,7 @@
-use crate::strategy::LoadBalancingStrategy;
-use crate::worker::Worker;
 use color_eyre::eyre::{eyre, Result};
 use std::sync::Arc;
+use crate::load_balancer::strategy::LoadBalancingStrategy;
+use crate::load_balancer::worker::Worker;
 
 pub struct LeastConnectionStrategy {}
 

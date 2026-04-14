@@ -1,7 +1,7 @@
-use crate::strategy::LoadBalancingStrategy;
-use crate::worker::Worker;
 use color_eyre::eyre::{eyre, Result};
 use std::sync::{Arc, Mutex};
+use crate::load_balancer::strategy::LoadBalancingStrategy;
+use crate::load_balancer::worker::Worker;
 
 pub struct RoundRobinStrategy {
     current_worker_index: Mutex<usize>,

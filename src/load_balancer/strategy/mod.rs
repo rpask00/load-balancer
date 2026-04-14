@@ -1,10 +1,10 @@
-use crate::worker::Worker;
 use color_eyre::eyre::Result;
 use std::sync::Arc;
 use strum::EnumString;
+use crate::load_balancer::worker::Worker;
 
 pub trait LoadBalancingStrategy: Send + Sync {
-    fn new() -> Self
+     fn new() -> Self
     where
         Self: Sized;
     fn select_worker(&self, workers: &Vec<Arc<Worker>>) -> Result<Arc<Worker>>;

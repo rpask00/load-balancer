@@ -1,12 +1,12 @@
-use crate::strategy::least_connection::LeastConnectionStrategy;
-use crate::strategy::round_robin::RoundRobinStrategy;
-use crate::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
-use crate::worker::Worker;
 use axum::http::{Request, Uri};
 use hyper::body::Incoming;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::task;
+use crate::load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
+use crate::load_balancer::strategy::least_connection::LeastConnectionStrategy;
+use crate::load_balancer::strategy::round_robin::RoundRobinStrategy;
+use crate::load_balancer::worker::Worker;
 
 pub struct LoadBalancer {
     pub workers: Vec<Arc<Worker>>,

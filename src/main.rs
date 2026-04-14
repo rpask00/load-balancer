@@ -1,10 +1,4 @@
-mod load_balancer;
-mod strategy;
-mod worker;
 
-use crate::load_balancer::LoadBalancer;
-use crate::strategy::least_connection::LeastConnectionStrategy;
-use crate::strategy::LoadBalancingStrategy;
 use bytes::Bytes;
 use color_eyre::eyre::{eyre, Result};
 use http_body_util::combinators::BoxBody;
@@ -15,6 +9,9 @@ use hyper_util::rt::TokioIo;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::RwLock;
 use tokio::{net::TcpListener, task};
+use load_balancer::load_balancer::load_balancer::LoadBalancer;
+use load_balancer::load_balancer::strategy::least_connection::LeastConnectionStrategy;
+use load_balancer::load_balancer::strategy::LoadBalancingStrategy;
 
 type BodyError = Box<dyn std::error::Error + Send + Sync>;
 type BoxBodyResponse = Response<BoxBody<Bytes, BodyError>>;
