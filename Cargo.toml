@@ -19,3 +19,5 @@ color-eyre = "0.6.5"
 strum = { version = "0.26", features = ["derive"] }
 axum = "0.8.8"
 clap = { version = "4", features = ["derive"] }
+crossterm = "0.29.0"
+ratatui = "0.30.0"
