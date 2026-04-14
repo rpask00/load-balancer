@@ -4,14 +4,8 @@ use ratatui::{
     widgets::TableState,
 };
 
+use super::{ComponentAction, HandleEvent};
 use crate::tui::models::{InputField, Item};
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum AddMenuAction {
-    Continue,
-    Cancel,
-    Submit,
-}
 
 pub struct AddItemMenu {
     pub name: String,
@@ -50,17 +44,19 @@ impl AddItemMenu {
         }
         self.port_error = true;
     }
+}
 
-    pub fn handle_key(&mut self, key: KeyEvent) -> AddMenuAction {
+impl HandleEvent for AddItemMenu {
+    fn handle_key(&mut self, key: KeyEvent) -> ComponentAction {
         match key.code {
-            KeyCode::Esc => AddMenuAction::Cancel,
-            KeyCode::Enter => AddMenuAction::Submit,
+            KeyCode::Esc => ComponentAction::Cancel,
+            KeyCode::Enter => ComponentAction::Submit,
             KeyCode::Tab => {
                 self.focused = match self.focused {
                     InputField::Name => InputField::Port,
                     InputField::Port => InputField::Name,
                 };
-                AddMenuAction::Continue
+                ComponentAction::Continue
             }
             KeyCode::Backspace => {
                 match self.focused {
@@ -72,7 +68,7 @@ impl AddItemMenu {
                         self.port_error = false;
                     }
                 }
-                AddMenuAction::Continue
+                ComponentAction::Continue
             }
             KeyCode::Char(c) => {
                 match self.focused {
@@ -83,13 +79,13 @@ impl AddItemMenu {
                     }
                     _ => {}
                 }
-                AddMenuAction::Continue
+                ComponentAction::Continue
             }
-            _ => AddMenuAction::Continue,
+            _ => ComponentAction::Continue,
         }
     }
 
-    pub fn handle_mouse(&mut self, pos: Position) -> AddMenuAction {
+    fn handle_mouse(&mut self, pos: Position) -> ComponentAction {
         if let (Some(popup_area), Some(name_area), Some(port_area)) =
             (self.popup_area, self.name_input_area, self.port_input_area)
         {
@@ -100,12 +96,12 @@ impl AddItemMenu {
                     self.focused = InputField::Port;
                     self.port_error = false;
                 }
-                AddMenuAction::Continue
+                ComponentAction::Continue
             } else {
-                AddMenuAction::Cancel
+                ComponentAction::Cancel
             }
         } else {
-            AddMenuAction::Continue
+            ComponentAction::Continue
         }
     }
 }

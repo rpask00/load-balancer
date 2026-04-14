@@ -1,14 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Position, Rect};
 
+use super::{ComponentAction, HandleEvent};
 use crate::tui::models::LoadBalancerMode;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ModeSelectAction {
-    Continue,
-    Cancel,
-    Confirm,
-}
 
 pub struct ModeSelectMenu {
     pub selection_index: usize,
@@ -34,38 +28,40 @@ impl ModeSelectMenu {
             LoadBalancerMode::LeastConnections
         };
     }
+}
 
-    pub fn handle_key(&mut self, key: KeyEvent) -> ModeSelectAction {
+impl HandleEvent for ModeSelectMenu {
+    fn handle_key(&mut self, key: KeyEvent) -> ComponentAction {
         match key.code {
-            KeyCode::Esc => ModeSelectAction::Cancel,
-            KeyCode::Enter => ModeSelectAction::Confirm,
+            KeyCode::Esc => ComponentAction::Cancel,
+            KeyCode::Enter => ComponentAction::Confirm,
             KeyCode::Down | KeyCode::Char('j') => {
                 self.selection_index = (self.selection_index + 1) % 2;
-                ModeSelectAction::Continue
+                ComponentAction::Continue
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 self.selection_index = if self.selection_index == 0 { 1 } else { 0 };
-                ModeSelectAction::Continue
+                ComponentAction::Continue
             }
-            _ => ModeSelectAction::Continue,
+            _ => ComponentAction::Continue,
         }
     }
 
-    pub fn handle_mouse(&mut self, pos: Position) -> ModeSelectAction {
+    fn handle_mouse(&mut self, pos: Position) -> ComponentAction {
         if let Some(area) = self.menu_area {
             if area.contains(pos) {
                 let relative_y = pos.y.saturating_sub(area.y + 4);
                 if relative_y == 2 {
                     self.selection_index = 0;
-                    return ModeSelectAction::Confirm;
+                    return ComponentAction::Confirm;
                 } else if relative_y == 5 {
                     self.selection_index = 1;
-                    return ModeSelectAction::Confirm;
+                    return ComponentAction::Confirm;
                 }
             } else {
-                return ModeSelectAction::Cancel;
+                return ComponentAction::Cancel;
             }
         }
-        ModeSelectAction::Continue
+        ComponentAction::Continue
     }
 }

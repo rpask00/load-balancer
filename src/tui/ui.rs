@@ -40,9 +40,9 @@ fn render_header(f: &mut Frame, area: Rect, app: &mut App) {
         ])
         .split(area);
 
-    app.add_button_area = Some(header_layout[2]);
-    app.delete_button_area = Some(header_layout[3]);
-    app.options_button_area = Some(header_layout[4]);
+    app.main_menu.add_button_area = Some(header_layout[2]);
+    app.main_menu.delete_button_area = Some(header_layout[3]);
+    app.main_menu.options_button_area = Some(header_layout[4]);
 
     let title_text = format!("Load Balancer | {}", app.current_mode.as_str());
     let title = Paragraph::new(title_text)
@@ -67,7 +67,7 @@ fn render_header(f: &mut Frame, area: Rect, app: &mut App) {
 }
 
 fn render_table(f: &mut Frame, area: Rect, app: &mut App) {
-    app.table_area = Some(area);
+    app.main_menu.table_area = Some(area);
 
     let header = Row::new(["Name", "Port"])
         .style(Style::default().fg(Color::Yellow).bold())
@@ -157,7 +157,7 @@ fn render_add_popup(f: &mut Frame, area: Rect, app: &mut App) {
 
 fn render_options_menu(f: &mut Frame, app: &mut App) {
     if let Some(stored_area) = &mut app.options_menu {
-        if let Some(btn_area) = app.options_button_area {
+        if let Some(btn_area) = app.main_menu.options_button_area {
             let full_area = f.area();
             let menu_width: u16 = 22;
             let menu_height: u16 = 5;
