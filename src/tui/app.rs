@@ -1,5 +1,8 @@
 use crate::tui::{
-    component::{add_item_menu::AddItemMenu, mode_select_menu::ModeSelectorMenu},
+    component::{
+        add_item_menu::{AddItemMenu, AddMenuAction},
+        mode_select_menu::{ModeSelectorAction, ModeSelectorMenu},
+    },
     models::*,
 };
 use crossterm::event::{
@@ -151,16 +154,10 @@ impl App {
 
     fn handle_key_mode_selector(&mut self, key: KeyEvent) {
         if let Some(menu) = &mut self.mode_selector_menu {
-            match key.code {
-                KeyCode::Esc => self.cancel_mode_selection(),
-                KeyCode::Enter => self.confirm_mode_selection(),
-                KeyCode::Down | KeyCode::Char('j') => {
-                    menu.selection_index = (menu.selection_index + 1) % 2;
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    menu.selection_index = if menu.selection_index == 0 { 1 } else { 0 };
-                }
-                _ => {}
+            match menu.handle_key(key) {
+                ModeSelectorAction::Cancel => self.cancel_mode_selection(),
+                ModeSelectorAction::Confirm => self.confirm_mode_selection(),
+                ModeSelectorAction::Continue => (),
             }
         }
     }
@@ -173,33 +170,10 @@ impl App {
 
     fn handle_key_add_menu(&mut self, key: KeyEvent) {
         if let Some(menu) = &mut self.add_item_menu {
-            match key.code {
-                KeyCode::Esc => self.cancel_adding(),
-                KeyCode::Enter => self.submit_adding(),
-                KeyCode::Tab => {
-                    menu.focused = match menu.focused {
-                        InputField::Name => InputField::Port,
-                        InputField::Port => InputField::Name,
-                    };
-                }
-                KeyCode::Backspace => match menu.focused {
-                    InputField::Name => {
-                        let _ = menu.name.pop();
-                    }
-                    InputField::Port => {
-                        let _ = menu.port_str.pop();
-                        menu.port_error = false;
-                    }
-                },
-                KeyCode::Char(c) => match menu.focused {
-                    InputField::Name => menu.name.push(c),
-                    InputField::Port if c.is_numeric() => {
-                        menu.port_str.push(c);
-                        menu.port_error = false;
-                    }
-                    _ => {}
-                },
-                _ => {}
+            match menu.handle_key(key) {
+                AddMenuAction::Cancel => self.cancel_adding(),
+                AddMenuAction::Submit => self.submit_adding(),
+                AddMenuAction::Continue => (),
             }
         }
     }
@@ -239,38 +213,19 @@ impl App {
 
     fn handle_mouse_mode_selector(&mut self, pos: Position) {
         if let Some(menu) = &mut self.mode_selector_menu {
-            if let Some(area) = menu.menu_area {
-                if area.contains(pos) {
-                    let relative_y = pos.y.saturating_sub(area.y + 4);
-                    if relative_y == 2 {
-                        menu.selection_index = 0;
-                        self.confirm_mode_selection();
-                    } else if relative_y == 5 {
-                        menu.selection_index = 1;
-                        self.confirm_mode_selection();
-                    }
-                } else {
-                    self.cancel_mode_selection();
-                }
+            match menu.handle_mouse(pos) {
+                ModeSelectorAction::Cancel => self.cancel_mode_selection(),
+                ModeSelectorAction::Confirm => self.confirm_mode_selection(),
+                ModeSelectorAction::Continue => (),
             }
         }
     }
 
     fn handle_mouse_add_menu(&mut self, pos: Position) {
         if let Some(menu) = &mut self.add_item_menu {
-            if let (Some(popup_area), Some(name_area), Some(port_area)) =
-                (menu.popup_area, menu.name_input_area, menu.port_input_area)
-            {
-                if popup_area.contains(pos) {
-                    if name_area.contains(pos) {
-                        menu.focused = InputField::Name;
-                    } else if port_area.contains(pos) {
-                        menu.focused = InputField::Port;
-                        menu.port_error = false;
-                    }
-                } else {
-                    self.cancel_adding();
-                }
+            match menu.handle_mouse(pos) {
+                AddMenuAction::Cancel => self.cancel_adding(),
+                _ => (),
             }
         }
     }
