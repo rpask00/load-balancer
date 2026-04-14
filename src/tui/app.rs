@@ -1,7 +1,7 @@
 use crate::tui::{
     component::{
         add_item_menu::{AddItemMenu, AddMenuAction},
-        mode_select_menu::{ModeSelectorAction, ModeSelectorMenu},
+        mode_select_menu::{ModeSelectAction, ModeSelectMenu},
     },
     models::*,
 };
@@ -29,7 +29,7 @@ pub struct App {
     // conditional app ui vars
     pub add_item_menu: Option<AddItemMenu>,
     pub options_menu: Option<Rect>,
-    pub mode_selector_menu: Option<ModeSelectorMenu>,
+    pub mode_selector_menu: Option<ModeSelectMenu>,
 }
 
 impl App {
@@ -110,7 +110,7 @@ impl App {
     }
 
     pub fn open_mode_select(&mut self) {
-        self.mode_selector_menu = Some(ModeSelectorMenu::new(self.current_mode));
+        self.mode_selector_menu = Some(ModeSelectMenu::new(self.current_mode));
     }
 
     pub fn confirm_mode_selection(&mut self) {
@@ -155,9 +155,9 @@ impl App {
     fn handle_key_mode_selector(&mut self, key: KeyEvent) {
         if let Some(menu) = &mut self.mode_selector_menu {
             match menu.handle_key(key) {
-                ModeSelectorAction::Cancel => self.cancel_mode_selection(),
-                ModeSelectorAction::Confirm => self.confirm_mode_selection(),
-                ModeSelectorAction::Continue => (),
+                ModeSelectAction::Cancel => self.cancel_mode_selection(),
+                ModeSelectAction::Confirm => self.confirm_mode_selection(),
+                ModeSelectAction::Continue => (),
             }
         }
     }
@@ -214,9 +214,9 @@ impl App {
     fn handle_mouse_mode_selector(&mut self, pos: Position) {
         if let Some(menu) = &mut self.mode_selector_menu {
             match menu.handle_mouse(pos) {
-                ModeSelectorAction::Cancel => self.cancel_mode_selection(),
-                ModeSelectorAction::Confirm => self.confirm_mode_selection(),
-                ModeSelectorAction::Continue => (),
+                ModeSelectAction::Cancel => self.cancel_mode_selection(),
+                ModeSelectAction::Confirm => self.confirm_mode_selection(),
+                ModeSelectAction::Continue => (),
             }
         }
     }
