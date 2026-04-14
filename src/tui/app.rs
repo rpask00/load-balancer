@@ -2,7 +2,9 @@ use crate::tui::{
     component::{add_item_menu::AddItemMenu, mode_select_menu::ModeSelectorMenu},
     models::*,
 };
-use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::{
     layout::{Position, Rect},
     widgets::TableState,
@@ -121,166 +123,204 @@ impl App {
 
     pub fn handle_event(&mut self, event: Event) -> bool {
         match event {
-            Event::Key(key) if key.kind == KeyEventKind::Press => {
-                if let Some(menu) = &mut self.mode_selector_menu {
-                    match key.code {
-                        KeyCode::Esc => self.cancel_mode_selection(),
-                        KeyCode::Enter => self.confirm_mode_selection(),
-                        KeyCode::Down | KeyCode::Char('j') => {
-                            menu.selection_index = (menu.selection_index + 1) % 2
-                        }
-                        KeyCode::Up | KeyCode::Char('k') => {
-                            menu.selection_index = if menu.selection_index == 0 { 1 } else { 0 }
-                        }
-                        _ => {}
-                    }
-                    return false;
-                }
+            Event::Key(key) if key.kind == KeyEventKind::Press => self.handle_key_event(key),
+            Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
+                self.handle_mouse_event(mouse)
+            }
+            _ => false,
+        }
+    }
 
-                if let Some(_) = &mut self.options_menu {
-                    if key.code == KeyCode::Esc {
-                        self.options_menu = None;
-                        return false;
-                    }
-                }
+    fn handle_key_event(&mut self, key: KeyEvent) -> bool {
+        if self.mode_selector_menu.is_some() {
+            self.handle_key_mode_selector(key);
+            return false;
+        }
+        if self.options_menu.is_some() {
+            self.handle_key_options_menu(key);
+            return false;
+        }
+        if self.add_item_menu.is_some() {
+            self.handle_key_add_menu(key);
+            return false;
+        }
 
-                if let Some(menu) = &mut self.add_item_menu {
-                    match key.code {
-                        KeyCode::Esc => self.cancel_adding(),
-                        KeyCode::Enter => self.submit_adding(),
-                        KeyCode::Tab => {
-                            menu.focused = match menu.focused {
-                                InputField::Name => InputField::Port,
-                                InputField::Port => InputField::Name,
-                            };
-                        }
-                        KeyCode::Backspace => match menu.focused {
-                            InputField::Name => {
-                                let _ = menu.name.pop();
-                            }
-                            InputField::Port => {
-                                let _ = menu.port_str.pop();
-                                menu.port_error = false;
-                            }
-                        },
-                        KeyCode::Char(c) => match menu.focused {
-                            InputField::Name => menu.name.push(c),
-                            InputField::Port if c.is_numeric() => {
-                                menu.port_str.push(c);
-                                menu.port_error = false;
-                            }
-                            _ => {}
-                        },
-                        _ => {}
-                    }
-                    return false;
-                }
+        self.handle_key_main_view(key);
+        false
+    }
 
-                match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
-                    KeyCode::Down | KeyCode::Char('j') => self.table_state.select_next(),
-                    KeyCode::Up | KeyCode::Char('k') => self.table_state.select_previous(),
-                    KeyCode::Char('d')
-                    | KeyCode::Char('D')
-                    | KeyCode::Char('x')
-                    | KeyCode::Char('X') => self.delete_selected(),
-                    KeyCode::Char('a') | KeyCode::Char('A') => self.start_adding(),
+    fn handle_key_mode_selector(&mut self, key: KeyEvent) {
+        if let Some(menu) = &mut self.mode_selector_menu {
+            match key.code {
+                KeyCode::Esc => self.cancel_mode_selection(),
+                KeyCode::Enter => self.confirm_mode_selection(),
+                KeyCode::Down | KeyCode::Char('j') => {
+                    menu.selection_index = (menu.selection_index + 1) % 2;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    menu.selection_index = if menu.selection_index == 0 { 1 } else { 0 };
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn handle_key_options_menu(&mut self, key: KeyEvent) {
+        if key.code == KeyCode::Esc {
+            self.options_menu = None;
+        }
+    }
+
+    fn handle_key_add_menu(&mut self, key: KeyEvent) {
+        if let Some(menu) = &mut self.add_item_menu {
+            match key.code {
+                KeyCode::Esc => self.cancel_adding(),
+                KeyCode::Enter => self.submit_adding(),
+                KeyCode::Tab => {
+                    menu.focused = match menu.focused {
+                        InputField::Name => InputField::Port,
+                        InputField::Port => InputField::Name,
+                    };
+                }
+                KeyCode::Backspace => match menu.focused {
+                    InputField::Name => {
+                        let _ = menu.name.pop();
+                    }
+                    InputField::Port => {
+                        let _ = menu.port_str.pop();
+                        menu.port_error = false;
+                    }
+                },
+                KeyCode::Char(c) => match menu.focused {
+                    InputField::Name => menu.name.push(c),
+                    InputField::Port if c.is_numeric() => {
+                        menu.port_str.push(c);
+                        menu.port_error = false;
+                    }
                     _ => {}
-                }
+                },
+                _ => {}
             }
-            Event::Mouse(mouse) => {
-                if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
-                    let pos = Position::new(mouse.column, mouse.row);
+        }
+    }
 
-                    if let Some(menu) = &mut self.mode_selector_menu {
-                        if let Some(area) = menu.menu_area {
-                            if area.contains(pos) {
-                                let relative_y = mouse.row.saturating_sub(area.y + 4);
-                                if relative_y == 2 {
-                                    menu.selection_index = 0;
-                                    self.confirm_mode_selection();
-                                } else if relative_y == 5 {
-                                    menu.selection_index = 1;
-                                    self.confirm_mode_selection();
-                                }
-                                return false;
-                            } else {
-                                self.cancel_mode_selection();
-                                return false;
-                            }
-                        }
-                    }
-
-                    if let Some(menu) = &mut self.add_item_menu {
-                        if let (Some(popup_area), Some(name_area), Some(port_area)) =
-                            (menu.popup_area, menu.name_input_area, menu.port_input_area)
-                        {
-                            if popup_area.contains(pos) {
-                                if name_area.contains(pos) {
-                                    menu.focused = InputField::Name;
-                                } else if port_area.contains(pos) {
-                                    menu.focused = InputField::Port;
-                                    menu.port_error = false;
-                                }
-                                return false;
-                            } else {
-                                self.cancel_adding();
-                                return false;
-                            }
-                        }
-                    }
-
-                    if let Some(menu) = &mut self.options_menu {
-                        if menu.contains(pos) {
-                            let rel_y = mouse.row.saturating_sub(menu.y + 1);
-                            if rel_y == 0 {
-                                self.options_menu = None;
-                                self.open_mode_select();
-                                return false;
-                            } else if rel_y == 1 {
-                                self.should_quit = true;
-                                return false;
-                            }
-                        }
-                        self.options_menu = None;
-                        return false;
-                    }
-
-                    if let Some(area) = self.add_button_area {
-                        if area.contains(pos) {
-                            self.start_adding();
-                            return false;
-                        }
-                    }
-                    if let Some(area) = self.delete_button_area {
-                        if area.contains(pos) {
-                            self.delete_selected();
-                            return false;
-                        }
-                    }
-                    if let Some(area) = self.options_button_area {
-                        if area.contains(pos) {
-                            self.toggle_options_menu();
-                            return false;
-                        }
-                    }
-
-                    if let Some(table_area) = self.table_area {
-                        if table_area.contains(pos) {
-                            let relative_y = mouse.row.saturating_sub(table_area.top());
-                            const DATA_START: u16 = 3;
-                            if relative_y >= DATA_START {
-                                let row_idx = (relative_y - DATA_START) as usize;
-                                if row_idx < self.items.len() {
-                                    self.table_state.select(Some(row_idx));
-                                }
-                            }
-                        }
-                    }
-                }
+    fn handle_key_main_view(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
+            KeyCode::Down | KeyCode::Char('j') => self.table_state.select_next(),
+            KeyCode::Up | KeyCode::Char('k') => self.table_state.select_previous(),
+            KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Char('x') | KeyCode::Char('X') => {
+                self.delete_selected()
             }
+            KeyCode::Char('a') | KeyCode::Char('A') => self.start_adding(),
             _ => {}
         }
+    }
+
+    fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
+        let pos = Position::new(mouse.column, mouse.row);
+
+        if self.mode_selector_menu.is_some() {
+            self.handle_mouse_mode_selector(pos);
+            return false;
+        }
+        if self.add_item_menu.is_some() {
+            self.handle_mouse_add_menu(pos);
+            return false;
+        }
+        if self.options_menu.is_some() {
+            self.handle_mouse_options_menu(pos);
+            return false;
+        }
+
+        self.handle_mouse_main_view(pos);
         false
+    }
+
+    fn handle_mouse_mode_selector(&mut self, pos: Position) {
+        if let Some(menu) = &mut self.mode_selector_menu {
+            if let Some(area) = menu.menu_area {
+                if area.contains(pos) {
+                    let relative_y = pos.y.saturating_sub(area.y + 4);
+                    if relative_y == 2 {
+                        menu.selection_index = 0;
+                        self.confirm_mode_selection();
+                    } else if relative_y == 5 {
+                        menu.selection_index = 1;
+                        self.confirm_mode_selection();
+                    }
+                } else {
+                    self.cancel_mode_selection();
+                }
+            }
+        }
+    }
+
+    fn handle_mouse_add_menu(&mut self, pos: Position) {
+        if let Some(menu) = &mut self.add_item_menu {
+            if let (Some(popup_area), Some(name_area), Some(port_area)) =
+                (menu.popup_area, menu.name_input_area, menu.port_input_area)
+            {
+                if popup_area.contains(pos) {
+                    if name_area.contains(pos) {
+                        menu.focused = InputField::Name;
+                    } else if port_area.contains(pos) {
+                        menu.focused = InputField::Port;
+                        menu.port_error = false;
+                    }
+                } else {
+                    self.cancel_adding();
+                }
+            }
+        }
+    }
+
+    fn handle_mouse_options_menu(&mut self, pos: Position) {
+        if let Some(area) = self.options_menu {
+            if area.contains(pos) {
+                let rel_y = pos.y.saturating_sub(area.y + 1);
+                if rel_y == 0 {
+                    self.options_menu = None;
+                    self.open_mode_select();
+                } else if rel_y == 1 {
+                    self.should_quit = true;
+                }
+            } else {
+                self.options_menu = None;
+            }
+        }
+    }
+
+    fn handle_mouse_main_view(&mut self, pos: Position) {
+        if let Some(area) = self.add_button_area {
+            if area.contains(pos) {
+                self.start_adding();
+                return;
+            }
+        }
+        if let Some(area) = self.delete_button_area {
+            if area.contains(pos) {
+                self.delete_selected();
+                return;
+            }
+        }
+        if let Some(area) = self.options_button_area {
+            if area.contains(pos) {
+                self.toggle_options_menu();
+                return;
+            }
+        }
+        if let Some(table_area) = self.table_area {
+            if table_area.contains(pos) {
+                let relative_y = pos.y.saturating_sub(table_area.top());
+                const DATA_START: u16 = 3;
+                if relative_y >= DATA_START {
+                    let row_idx = (relative_y - DATA_START) as usize;
+                    if row_idx < self.items.len() {
+                        self.table_state.select(Some(row_idx));
+                    }
+                }
+            }
+        }
     }
 }
