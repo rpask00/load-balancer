@@ -1,16 +1,19 @@
 use crate::tui::models::*;
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
-use ratatui::layout::Position;
+use ratatui::{
+    layout::{Position, Rect},
+    widgets::TableState,
+};
 
 pub struct App {
     pub items: Vec<Item>,
-    pub table_state: ratatui::widgets::TableState,
-    pub add_button_area: Option<ratatui::layout::Rect>,
-    pub delete_button_area: Option<ratatui::layout::Rect>,
-    pub options_button_area: Option<ratatui::layout::Rect>,
+    pub table_state: TableState,
+    pub add_button_area: Option<Rect>,
+    pub delete_button_area: Option<Rect>,
+    pub options_button_area: Option<Rect>,
     pub options_menu_open: bool,
-    pub options_menu_area: Option<ratatui::layout::Rect>,
-    pub table_area: Option<ratatui::layout::Rect>,
+    pub options_menu_area: Option<Rect>,
+    pub table_area: Option<Rect>,
     pub mode: AppMode,
     pub new_name: String,
     pub new_port_str: String,
@@ -18,11 +21,11 @@ pub struct App {
     pub should_quit: bool,
     pub current_mode: LoadBalancerMode,
     pub mode_select_open: bool,
-    pub mode_select_area: Option<ratatui::layout::Rect>,
+    pub mode_select_area: Option<Rect>,
     pub mode_selection_index: usize,
-    pub add_popup_area: Option<ratatui::layout::Rect>,
-    pub add_name_input_area: Option<ratatui::layout::Rect>,
-    pub add_port_input_area: Option<ratatui::layout::Rect>,
+    pub add_popup_area: Option<Rect>,
+    pub add_name_input_area: Option<Rect>,
+    pub add_port_input_area: Option<Rect>,
     pub add_port_error: bool,
 }
 
@@ -43,7 +46,7 @@ impl App {
                     port: 3002,
                 },
             ],
-            table_state: ratatui::widgets::TableState::default().with_selected(Some(0)),
+            table_state: TableState::default().with_selected(Some(0)),
             add_button_area: None,
             delete_button_area: None,
             options_button_area: None,
@@ -260,13 +263,11 @@ impl App {
                             if menu_area.contains(pos) {
                                 let rel_y = mouse.row.saturating_sub(menu_area.y + 1);
                                 if rel_y == 0 {
-                                    // Set Mode (now top)
                                     self.options_menu_open = false;
                                     self.options_menu_area = None;
                                     self.open_mode_select();
                                     return false;
                                 } else if rel_y == 1 {
-                                    // Quit (now bottom)
                                     self.should_quit = true;
                                     return false;
                                 }
