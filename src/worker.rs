@@ -1,4 +1,5 @@
 use crate::BoxBodyResponse;
+use color_eyre::eyre::eyre;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::Request;
@@ -46,18 +47,21 @@ impl Worker {
             .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()));
         result
     }
-}
 
-impl Drop for Worker {
-    fn drop(&mut self) {
-        let mut child = self.child.write().expect("Failed to acquire write lock on child process");
+    pub async fn shutdown(&self) -> color_eyre::Result<()> {
+        let mut child = self
+            .child
+            .write()
+            .map_err(|_| eyre!("Failed to acquire write lock on child process"))?;
+
         child
             .stdin
             .as_mut()
-            .expect("Failed to open stdin for child process")
-            .write_all(b"shutdown\n")
-            .expect("Failed to write to child process");
+            .ok_or(eyre!("Failed to open stdin for child process"))?
+            .write_all(b"shutdown\n")?;
 
-        child.wait().unwrap();
+        child.wait()?;
+
+        Ok(())
     }
 }

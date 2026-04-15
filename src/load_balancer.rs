@@ -3,10 +3,10 @@ use crate::strategy::round_robin::RoundRobinStrategy;
 use crate::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
 use crate::worker::Worker;
 use axum::http::{Request, Uri};
+use color_eyre::eyre::Result;
 use hyper::body::Incoming;
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::task;
 
 pub struct LoadBalancer {
     pub workers: Vec<Arc<Worker>>,
@@ -16,7 +16,7 @@ pub struct LoadBalancer {
 }
 
 impl LoadBalancer {
-    pub fn new(strategy: Box<dyn LoadBalancingStrategy>) -> color_eyre::Result<Self> {
+    pub fn new(strategy: Box<dyn LoadBalancingStrategy>) -> Result<Self> {
         Ok(LoadBalancer {
             workers: vec![],
             strategy,
@@ -66,16 +66,12 @@ impl LoadBalancer {
         self.workers.push(Arc::new(Worker::new(port, num_threads)));
     }
 
-    pub async fn close_worker(&mut self, worker_index: usize) {
+    pub async fn close_worker(&mut self, worker_index: usize) -> Result<()> {
         let worker = self.workers.remove(worker_index);
-        let worker_port = worker.port;
+        worker.shutdown().await?;
+        self.free_ports.push(worker.port);
 
-        let _ = task::spawn_blocking(move || {
-            drop(worker);
-        })
-        .await;
-
-        self.free_ports.push(worker_port);
+        Ok(())
     }
 
     fn strategy_from_name(name: &str) -> color_eyre::Result<Box<dyn LoadBalancingStrategy>> {
