@@ -23,6 +23,7 @@ crossterm = "0.29.0"
 ratatui = "0.30.0"
 log = "0.4"
 simplelog = "0.12"
+rand = "0.8"
 
 
 [[bin]]
