@@ -25,14 +25,19 @@ impl LoadBalancer {
         })
     }
 
-    fn next_port(&mut self) -> u16 {
-        if self.free_ports.is_empty() {
-            self.free_ports.push(self.next_port);
-            self.next_port += 1;
+    fn next_port(&self) -> u16 {
+        let mut port = 3000;
+        let mut used_ports = self.workers.iter().map(|w| w.port).collect::<Vec<_>>();
+        used_ports.sort();
+
+        for used_port in used_ports {
+            if used_port != port {
+                return port;
+            };
+            port += 1;
         }
 
-        // free_ports can't be empty at this point so it will never panic.
-        self.free_ports.pop().expect("No free ports available")
+        port
     }
 
     pub fn prepare_request(
@@ -67,12 +72,11 @@ impl LoadBalancer {
             .push(Arc::new(Worker::new(name, port, num_threads)));
     }
 
-    pub async fn close_worker(&mut self, worker_index: usize) -> Result<()> {
+    pub fn close_worker(&mut self, worker_index: usize) {
         let worker = self.workers.remove(worker_index);
-        worker.shutdown().await?;
-        self.free_ports.push(worker.port);
-
-        Ok(())
+        std::thread::spawn(async move || {
+            worker.shutdown().await.expect("Failed to shutdown worker");
+        });
     }
 
     fn strategy_from_name(name: &str) -> color_eyre::Result<Box<dyn LoadBalancingStrategy>> {

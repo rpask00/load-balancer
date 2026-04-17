@@ -1,3 +1,4 @@
+use crate::load_balancer::load_balancer::LoadBalancer;
 use crate::tui::{
     component::{
         add_item_menu::AddItemMenu, main_menu::MainMenu, mode_select_menu::ModeSelectMenu,
@@ -12,11 +13,12 @@ use ratatui::{
     layout::{Position, Rect},
     widgets::TableState,
 };
+use std::sync::{Arc, RwLock};
 
 pub struct App {
     // app state vars
-    pub items: Vec<Item>,
     pub table_state: TableState,
+    pub load_balancer: Arc<RwLock<LoadBalancer>>,
     pub current_mode: LoadBalancerMode,
     pub should_quit: bool,
     // sub-components
@@ -27,26 +29,12 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(load_balancer: Arc<RwLock<LoadBalancer>>) -> Self {
         Self {
-            items: vec![
-                Item {
-                    name: "worker 1".to_string(),
-                    port: 3000,
-                },
-                Item {
-                    name: "worker 2".to_string(),
-                    port: 3001,
-                },
-                Item {
-                    name: "worker 3".to_string(),
-                    port: 3002,
-                },
-            ],
             table_state: TableState::default().with_selected(Some(0)),
             current_mode: LoadBalancerMode::RoundRobin,
             should_quit: false,
-
+            load_balancer,
             main_menu: MainMenu::new(),
             add_item_menu: None,
             options_menu: None,
@@ -63,8 +51,15 @@ impl App {
     }
 
     pub fn submit_adding(&mut self) {
+        let mut load_balancer = self
+            .load_balancer
+            .write()
+            .expect("Failed to lock load balancer for writing");
+
         if let Some(menu) = &mut self.add_item_menu {
-            menu.submit(&mut self.items, &mut self.table_state);
+            menu.submit(&mut load_balancer, &mut self.table_state);
+            drop(load_balancer);
+
             if !menu.port_error {
                 self.cancel_adding();
             }
@@ -72,12 +67,19 @@ impl App {
     }
 
     pub fn delete_at(&mut self, index: usize) {
-        if index < self.items.len() {
-            self.items.remove(index);
-            if !self.items.is_empty() {
+        let mut load_balancer = self
+            .load_balancer
+            .write()
+            .expect("Failed to lock load balancer for writing");
+
+        load_balancer.close_worker(index);
+
+
+        if index < load_balancer.workers.len() {
+            if !load_balancer.workers.is_empty() {
                 let new_idx = index
                     .saturating_sub(1)
-                    .min(self.items.len().saturating_sub(1));
+                    .min(load_balancer.workers.len().saturating_sub(1));
                 self.table_state.select(Some(new_idx));
             } else {
                 self.table_state.select(None);
@@ -172,11 +174,7 @@ impl App {
             ComponentAction::ToggleOptions => self.toggle_options_menu(),
             ComponentAction::TableSelectNext => self.table_state.select_next(),
             ComponentAction::TableSelectPrevious => self.table_state.select_previous(),
-            ComponentAction::SelectTableRow(row_idx) => {
-                if row_idx < self.items.len() {
-                    self.table_state.select(Some(row_idx));
-                }
-            }
+            ComponentAction::SelectTableRow(row_idx) => self.table_state.select(Some(row_idx)),
             _ => {}
         }
     }
