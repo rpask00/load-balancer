@@ -1,11 +1,11 @@
+use super::{ComponentAction, HandleEvent};
+use crate::load_balancer::load_balancer::LoadBalancer;
+use crate::tui::models::{InputField, Item};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::{Position, Rect},
     widgets::TableState,
 };
-
-use super::{ComponentAction, HandleEvent};
-use crate::tui::models::{InputField, Item};
 
 pub struct AddItemMenu {
     pub name: String,
@@ -30,15 +30,12 @@ impl AddItemMenu {
         }
     }
 
-    pub fn submit(&mut self, items: &mut Vec<Item>, table_state: &mut TableState) {
+    pub fn submit(&mut self, load_balancer: &mut LoadBalancer, table_state: &mut TableState) {
         self.port_error = false;
         if let Ok(port) = self.port_str.parse::<u16>() {
             if !self.name.is_empty() {
-                items.push(Item {
-                    name: self.name.clone(),
-                    port,
-                });
-                table_state.select(Some(items.len() - 1));
+                load_balancer.spawn_worker(1, self.name.clone(), Some(port));
+                table_state.select(Some(load_balancer.workers.len() - 1));
                 return;
             }
         }

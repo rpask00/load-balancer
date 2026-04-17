@@ -1,13 +1,12 @@
+use crate::load_balancer::strategy::least_connection::LeastConnectionStrategy;
+use crate::load_balancer::strategy::round_robin::RoundRobinStrategy;
+use crate::load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
+use crate::load_balancer::worker::Worker;
 use axum::http::{Request, Uri};
 use color_eyre::eyre::Result;
 use hyper::body::Incoming;
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::task;
-use crate::load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
-use crate::load_balancer::strategy::least_connection::LeastConnectionStrategy;
-use crate::load_balancer::strategy::round_robin::RoundRobinStrategy;
-use crate::load_balancer::worker::Worker;
 
 pub struct LoadBalancer {
     pub workers: Vec<Arc<Worker>>,
@@ -62,9 +61,10 @@ impl LoadBalancer {
         Ok(new_req)
     }
 
-    pub fn spawn_worker(&mut self, num_threads: u8) {
-        let port = self.next_port();
-        self.workers.push(Arc::new(Worker::new(port, num_threads)));
+    pub fn spawn_worker(&mut self, num_threads: u8, name: String, port: Option<u16>) {
+        let port = port.unwrap_or_else(|| self.next_port());
+        self.workers
+            .push(Arc::new(Worker::new(name, port, num_threads)));
     }
 
     pub async fn close_worker(&mut self, worker_index: usize) -> Result<()> {
