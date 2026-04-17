@@ -49,11 +49,10 @@ fn main() {
         let app = Router::new().fallback(worker_handler).with_state(args.port);
 
         let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
-        println!("worker listening on http://{}", addr);
 
         let listener = TcpListener::bind(addr)
             .await
-            .expect("failed to bind worker port");
+            .unwrap_or_else(|_| panic!("failed to bind to {}", args.port));
 
         let shutdown_signal = async {
             loop {
