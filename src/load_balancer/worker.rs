@@ -1,3 +1,4 @@
+use crate::load_balancer::BoxBodyResponse;
 use color_eyre::eyre::eyre;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
@@ -8,9 +9,9 @@ use hyper_util::rt::TokioExecutor;
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, RwLock};
-use crate::load_balancer::BoxBodyResponse;
 
 pub struct Worker {
+    pub name: String,
     pub port: u16,
     client: Client<HttpConnector, Incoming>,
     num_threads: u8,
@@ -18,11 +19,11 @@ pub struct Worker {
 }
 
 impl Worker {
-    pub fn new(port: u16, num_threads: u8) -> Self {
+    pub fn new(name: String, port: u16, num_threads: u8) -> Self {
         let connector = HttpConnector::new();
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
-        let child = Command::new("../../target/debug/worker")
+        let child = Command::new("./target/debug/worker")
             .arg("--port")
             .arg(port.to_string())
             .arg("--num-threads")
@@ -33,6 +34,7 @@ impl Worker {
 
         Worker {
             port,
+            name,
             num_threads,
             client,
             child: Arc::new(RwLock::new(child)),
