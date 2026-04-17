@@ -14,7 +14,7 @@ pub struct Worker {
     pub name: String,
     pub port: u16,
     client: Client<HttpConnector, Incoming>,
-    num_threads: u8,
+    pub num_threads: u8,
     child: Arc<RwLock<Child>>,
 }
 
