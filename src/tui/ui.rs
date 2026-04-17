@@ -1,4 +1,5 @@
 use crate::tui::app::App;
+use std::sync::Arc;
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin, Rect},
@@ -69,22 +70,34 @@ fn render_header(f: &mut Frame, area: Rect, app: &mut App) {
 fn render_table(f: &mut Frame, area: Rect, app: &mut App) {
     app.main_menu.table_area = Some(area);
 
-    let header = Row::new(["Name", "Port"])
+    let header = Row::new(["Name", "Port", "Power", "Connections"])
         .style(Style::default().fg(Color::Yellow).bold())
         .bottom_margin(1);
 
-    let rows: Vec<Row> = app
-        .items
+    let workers = &app
+        .load_balancer
+        .read()
+        .expect("Failed to lock load balancer for reading")
+        .workers;
+
+    let rows: Vec<Row> = workers
         .iter()
-        .map(|item| {
+        .map(|worker| {
             Row::new(vec![
-                Cell::from(item.name.as_str()),
-                Cell::from(item.port.to_string()),
+                Cell::from(worker.name.as_str()),
+                Cell::from(worker.port.to_string()),
+                Cell::from(worker.num_threads.to_string()),
+                Cell::from((Arc::strong_count(worker) - 1).to_string()),
             ])
         })
         .collect();
 
-    let widths = [Constraint::Percentage(50), Constraint::Percentage(30)];
+    let widths = [
+        Constraint::Percentage(40),
+        Constraint::Percentage(20),
+        Constraint::Percentage(20),
+        Constraint::Percentage(20),
+    ];
 
     let table = Table::new(rows, widths)
         .header(header)
