@@ -11,7 +11,6 @@ use hyper::server::conn::http1;
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response};
 use hyper_util::rt::TokioIo;
 use load_balancer::load_balancer::load_balancer::LoadBalancer;
-use load_balancer::load_balancer::strategy::least_connection::LeastConnectionStrategy;
 use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use load_balancer::load_balancer::strategy::LoadBalancingStrategy;
 use load_balancer::tui::app::App;
@@ -140,14 +139,12 @@ async fn main() -> io::Result<()> {
 
     let mut app = App::new(load_balancer.clone());
 
-    let _: JoinHandle<Result<()>> = std::thread::spawn(move || loop {
+    let _: JoinHandle<Result<()>> = std::thread::spawn(move || {
         while !app.should_quit {
             terminal.draw(|f| draw(f, &mut app))?;
 
             if let Ok(event) = event::read() {
-                if app.handle_event(event) {
-                    break;
-                }
+                let _ = app.handle_event(event);
             }
         }
 
@@ -158,6 +155,8 @@ async fn main() -> io::Result<()> {
             LeaveAlternateScreen,
             DisableMouseCapture
         )?;
+
+        Ok(())
     });
 
     loop {

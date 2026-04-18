@@ -218,7 +218,7 @@ impl App {
             let action = menu.handle_mouse(pos);
             match action {
                 ComponentAction::Cancel => self.cancel_adding(),
-                ComponentAction::Submit => self.submit_adding(), // ← Fixed
+                ComponentAction::Submit => self.submit_adding(),
                 _ => {}
             }
         }

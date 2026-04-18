@@ -1,6 +1,6 @@
 use super::{ComponentAction, HandleEvent};
 use crate::load_balancer::load_balancer::LoadBalancer;
-use crate::tui::models::{InputField, Item};
+use crate::tui::models::InputField;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::{Position, Rect},
