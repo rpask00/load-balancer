@@ -72,18 +72,19 @@ impl App {
             .write()
             .expect("Failed to lock load balancer for writing");
 
+        if index >= load_balancer.workers.len() {
+            drop(load_balancer);
+            return;
+        }
+
         load_balancer.close_worker(index);
 
-
-        if index < load_balancer.workers.len() {
-            if !load_balancer.workers.is_empty() {
-                let new_idx = index
-                    .saturating_sub(1)
-                    .min(load_balancer.workers.len().saturating_sub(1));
-                self.table_state.select(Some(new_idx));
-            } else {
-                self.table_state.select(None);
-            }
+        let new_len = load_balancer.workers.len();
+        if new_len == 0 {
+            self.table_state.select(None);
+        } else {
+            let new_idx = index.saturating_sub(1).min(new_len.saturating_sub(1));
+            self.table_state.select(Some(new_idx));
         }
     }
 
@@ -129,20 +130,20 @@ impl App {
     fn handle_key_event(&mut self, key: KeyEvent) -> bool {
         if self.mode_selector_menu.is_some() {
             self.handle_key_mode_selector(key);
-            return false;
+            return true;
         }
         if self.options_menu.is_some() {
             self.handle_key_options_menu(key);
-            return false;
+            return true;
         }
         if self.add_item_menu.is_some() {
             self.handle_key_add_menu(key);
-            return false;
+            return true;
         }
 
         let action = self.main_menu.handle_key(key);
         self.apply_action(action);
-        false
+        true
     }
 
     fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
@@ -150,20 +151,20 @@ impl App {
 
         if self.mode_selector_menu.is_some() {
             self.handle_mouse_mode_selector(pos);
-            return false;
+            return true;
         }
         if self.add_item_menu.is_some() {
             self.handle_mouse_add_menu(pos);
-            return false;
+            return true;
         }
         if self.options_menu.is_some() {
             self.handle_mouse_options_menu(pos);
-            return false;
+            return true;
         }
 
         let action = self.main_menu.handle_mouse(pos);
         self.apply_action(action);
-        false
+        true
     }
 
     fn apply_action(&mut self, action: ComponentAction) {
@@ -217,6 +218,7 @@ impl App {
             let action = menu.handle_mouse(pos);
             match action {
                 ComponentAction::Cancel => self.cancel_adding(),
+                ComponentAction::Submit => self.submit_adding(), // ← Fixed
                 _ => {}
             }
         }

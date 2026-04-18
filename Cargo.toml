@@ -29,3 +29,7 @@ rand = "0.8"
 [[bin]]
 name = "playground"
 path = "src/bin/playground.rs"
+
+[[bin]]
+name = "worker"
+path = "src/bin/lb_worker.rs"
