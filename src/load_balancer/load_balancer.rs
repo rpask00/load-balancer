@@ -3,7 +3,7 @@ use crate::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use crate::load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
 use crate::load_balancer::worker::Worker;
 use axum::http::{Request, Uri};
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{eyre, Result};
 use hyper::body::Incoming;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -79,15 +79,17 @@ impl LoadBalancer {
         });
     }
 
-    fn strategy_from_name(name: &str) -> color_eyre::Result<Box<dyn LoadBalancingStrategy>> {
-        match LoadBalancerStrategy::from_str(name)? {
-            LoadBalancerStrategy::RoundRobin => Ok(Box::new(LeastConnectionStrategy::new())),
-            LoadBalancerStrategy::LeastConnections => Ok(Box::new(RoundRobinStrategy::new())),
+    fn strategy_from_name(name: &str) -> Result<Box<dyn LoadBalancingStrategy>> {
+        match LoadBalancerStrategy::from_str(name)
+            .map_err(|_| eyre!("Unknown strategy name: {}", name))?
+        {
+            LoadBalancerStrategy::LeastConnections => Ok(Box::new(LeastConnectionStrategy::new())),
+            LoadBalancerStrategy::RoundRobin => Ok(Box::new(RoundRobinStrategy::new())),
         }
     }
 
-    pub fn set_strategy_handler(&mut self, strategy_name: &str) -> color_eyre::Result<()> {
-        self.strategy = LoadBalancer::strategy_from_name(&strategy_name)?;
+    pub fn set_strategy_handler(&mut self, strategy_name: &str) -> Result<()> {
+        self.strategy = LoadBalancer::strategy_from_name(strategy_name)?;
         Ok(())
     }
 }

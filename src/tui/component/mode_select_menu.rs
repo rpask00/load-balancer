@@ -1,8 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Position, Rect};
-
+use crate::load_balancer::strategy::LoadBalancerStrategy;
 use super::{ComponentAction, HandleEvent};
-use crate::tui::models::LoadBalancerMode;
 
 pub struct ModeSelectMenu {
     pub selection_index: usize,
@@ -10,10 +9,10 @@ pub struct ModeSelectMenu {
 }
 
 impl ModeSelectMenu {
-    pub fn new(current_mode: LoadBalancerMode) -> Self {
+    pub fn new(current_mode: &LoadBalancerStrategy) -> Self {
         let selection_index = match current_mode {
-            LoadBalancerMode::RoundRobin => 0,
-            LoadBalancerMode::LeastConnections => 1,
+            LoadBalancerStrategy::RoundRobin => 0,
+            LoadBalancerStrategy::LeastConnections => 1,
         };
         Self {
             selection_index,
@@ -21,11 +20,11 @@ impl ModeSelectMenu {
         }
     }
 
-    pub fn confirm(&mut self, current_mode: &mut LoadBalancerMode) {
+    pub fn confirm(&mut self, current_mode: &mut LoadBalancerStrategy) {
         *current_mode = if self.selection_index == 0 {
-            LoadBalancerMode::RoundRobin
+            LoadBalancerStrategy::RoundRobin
         } else {
-            LoadBalancerMode::LeastConnections
+            LoadBalancerStrategy::LeastConnections
         };
     }
 }

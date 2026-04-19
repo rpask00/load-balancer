@@ -15,18 +15,3 @@ pub enum InputField {
     Name,
     Port,
 }
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum LoadBalancerMode {
-    RoundRobin,
-    LeastConnections,
-}
-
-impl LoadBalancerMode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            LoadBalancerMode::RoundRobin => "Round Robin",
-            LoadBalancerMode::LeastConnections => "Least Connections",
-        }
-    }
-}

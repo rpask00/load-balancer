@@ -23,7 +23,7 @@ impl Worker {
         let connector = HttpConnector::new();
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
-        let child = Command::new("./target/debug/worker")
+        let child = Command::new("./target/debug/lb_worker")
             .arg("--port")
             .arg(port.to_string())
             .arg("--num-threads")

@@ -1,4 +1,5 @@
 use crate::load_balancer::load_balancer::LoadBalancer;
+use crate::load_balancer::strategy::LoadBalancerStrategy;
 use crate::tui::{
     component::{
         add_item_menu::AddItemMenu, main_menu::MainMenu, mode_select_menu::ModeSelectMenu,
@@ -19,7 +20,7 @@ pub struct App {
     // app state vars
     pub table_state: TableState,
     pub load_balancer: Arc<RwLock<LoadBalancer>>,
-    pub current_mode: LoadBalancerMode,
+    pub current_mode: LoadBalancerStrategy,
     pub should_quit: bool,
     // sub-components
     pub main_menu: MainMenu,
@@ -32,7 +33,7 @@ impl App {
     pub fn new(load_balancer: Arc<RwLock<LoadBalancer>>) -> Self {
         Self {
             table_state: TableState::default().with_selected(Some(0)),
-            current_mode: LoadBalancerMode::RoundRobin,
+            current_mode: LoadBalancerStrategy::RoundRobin,
             should_quit: false,
             load_balancer,
             main_menu: MainMenu::new(),
@@ -103,13 +104,23 @@ impl App {
     }
 
     pub fn open_mode_select(&mut self) {
-        self.mode_selector_menu = Some(ModeSelectMenu::new(self.current_mode));
+        self.mode_selector_menu = Some(ModeSelectMenu::new(&self.current_mode));
     }
 
     pub fn confirm_mode_selection(&mut self) {
         if let Some(menu) = &mut self.mode_selector_menu {
             menu.confirm(&mut self.current_mode);
         }
+
+        let mut load_balancer = self
+            .load_balancer
+            .write()
+            .expect("Failed to lock load balancer for writing");
+
+        load_balancer
+            .set_strategy_handler(self.current_mode.as_str())
+            .expect("Failed to set load balancer strategy");
+
         self.mode_selector_menu = None;
     }
 

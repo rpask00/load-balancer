@@ -31,5 +31,5 @@ name = "playground"
 path = "src/bin/playground.rs"
 
 [[bin]]
-name = "worker"
+name = "lb_worker"
 path = "src/bin/lb_worker.rs"
