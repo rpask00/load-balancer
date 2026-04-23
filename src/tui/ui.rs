@@ -70,7 +70,7 @@ fn render_header(f: &mut Frame, area: Rect, app: &mut App) {
 fn render_table(f: &mut Frame, area: Rect, app: &mut App) {
     app.main_menu.table_area = Some(area);
 
-    let header = Row::new(["Name", "Port", "Power", "Connections"])
+    let header = Row::new(["Name", "Port", "Strength", "Connections"])
         .style(Style::default().fg(Color::Yellow).bold())
         .bottom_margin(1);
 

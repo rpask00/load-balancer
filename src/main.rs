@@ -22,6 +22,7 @@ use simplelog::{Config, WriteLogger};
 use std::fs::File;
 use std::sync::RwLock;
 use std::thread::JoinHandle;
+use std::time::Duration;
 use std::{io, net::SocketAddr, sync::Arc};
 use tokio::{net::TcpListener, task};
 
@@ -124,7 +125,7 @@ async fn main() -> io::Result<()> {
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(5));
 
-        let num_threads: u8 = rand::random::<u8>() % 5 + 1;
+        let num_threads: u8 = rand::random::<u8>() % 3 + 1;
         lb_arc
             .write()
             .expect("Could not get write lock on load_balancer")
@@ -143,8 +144,10 @@ async fn main() -> io::Result<()> {
         while !app.should_quit {
             terminal.draw(|f| draw(f, &mut app))?;
 
-            if let Ok(event) = event::read() {
-                let _ = app.handle_event(event);
+            if event::poll(Duration::from_millis(100)).unwrap_or(false) {
+                if let Ok(event) = event::read() {
+                    let _ = app.handle_event(event);
+                }
             }
         }
 
