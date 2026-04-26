@@ -1,6 +1,7 @@
 use crate::tui::app::App;
 use std::sync::Arc;
 
+use crate::load_balancer::worker::WorkerStatus;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
@@ -70,7 +71,7 @@ fn render_header(f: &mut Frame, area: Rect, app: &mut App) {
 fn render_table(f: &mut Frame, area: Rect, app: &mut App) {
     app.main_menu.table_area = Some(area);
 
-    let header = Row::new(["Name", "Port", "Strength", "Connections"])
+    let header = Row::new(["Name", "Port", "Strength", "Connections", "Status"])
         .style(Style::default().fg(Color::Yellow).bold())
         .bottom_margin(1);
 
@@ -83,19 +84,26 @@ fn render_table(f: &mut Frame, area: Rect, app: &mut App) {
     let rows: Vec<Row> = workers
         .iter()
         .map(|worker| {
+            let status = match worker.status.read() {
+                Ok(status) => *status,
+                Err(_) => WorkerStatus::Unknown,
+            };
+
             Row::new(vec![
                 Cell::from(worker.name.as_str()),
                 Cell::from(worker.port.to_string()),
                 Cell::from(worker.num_threads.to_string()),
                 Cell::from((Arc::strong_count(worker) - 1).to_string()),
+                Cell::from(status.to_string()),
             ])
         })
         .collect();
 
     let widths = [
-        Constraint::Percentage(40),
+        Constraint::Percentage(30),
         Constraint::Percentage(20),
         Constraint::Percentage(20),
+        Constraint::Percentage(10),
         Constraint::Percentage(20),
     ];
 

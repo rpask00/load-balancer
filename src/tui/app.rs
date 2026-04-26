@@ -5,7 +5,6 @@ use crate::tui::{
         add_item_menu::AddItemMenu, main_menu::MainMenu, mode_select_menu::ModeSelectMenu,
         ComponentAction, HandleEvent,
     },
-    models::*,
 };
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind,

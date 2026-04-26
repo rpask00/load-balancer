@@ -24,6 +24,7 @@ ratatui = "0.30.0"
 log = "0.4"
 simplelog = "0.12"
 rand = "0.8"
+serde = { version = "1.0.228", features = ["derive"] }
 
 
 [[bin]]

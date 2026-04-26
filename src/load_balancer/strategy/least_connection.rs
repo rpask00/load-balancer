@@ -18,6 +18,7 @@ impl LoadBalancingStrategy for LeastConnectionStrategy {
 
         Ok(workers
             .iter()
+            .filter(|w| w.is_running())
             .reduce(|a, b| {
                 if Arc::strong_count(b) > Arc::strong_count(a) {
                     a

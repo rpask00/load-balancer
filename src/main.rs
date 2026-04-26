@@ -93,8 +93,6 @@ async fn main() -> io::Result<()> {
     )
     .unwrap();
 
-    log::info!("App started");
-
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -108,29 +106,21 @@ async fn main() -> io::Result<()> {
         LoadBalancer::new(default_strategy).expect("failed to create load balancer"),
     ));
 
-    // Now safe to use log macros anywhere
-    log::info!("App started");
+    let load_balancer_ref = Arc::clone(&load_balancer);
+    std::thread::spawn(move || {
+        for t in 0..1 {
+            std::thread::sleep(Duration::from_secs(t));
 
-    load_balancer
-        .write()
-        .expect("Could not get write lock on load_balancer")
-        .spawn_worker(1, "Worker 0".to_string(), None);
-    load_balancer
-        .write()
-        .expect("Could not get write lock on load_balancer")
-        .spawn_worker(1, "Worker 1".to_string(), None);
+            let num_threads: u8 = rand::random::<u8>() % 3 + 1;
 
-    let lb_arc = Arc::clone(&load_balancer);
-
-    std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_secs(5));
-
-        let num_threads: u8 = rand::random::<u8>() % 3 + 1;
-        lb_arc
-            .write()
-            .expect("Could not get write lock on load_balancer")
-            .spawn_worker(num_threads, "Worker x".to_string(), None);
+            load_balancer_ref
+                .clone()
+                .write()
+                .expect("Could not get write lock on load_balancer")
+                .spawn_worker(num_threads, "Worker x".to_string(), None);
+        }
     });
+
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
 

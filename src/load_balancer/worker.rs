@@ -9,13 +9,24 @@ use hyper_util::rt::TokioExecutor;
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, RwLock};
+use strum::Display;
+use tokio::task::spawn_blocking;
 
 pub struct Worker {
     pub name: String,
+    pub status: RwLock<WorkerStatus>,
     pub port: u16,
     client: Client<HttpConnector, Incoming>,
     pub num_threads: u8,
     child: Arc<RwLock<Child>>,
+}
+
+#[derive(Display, PartialEq, Copy, Clone)]
+pub enum WorkerStatus {
+    Running,
+    Closing,
+    Closed,
+    Unknown,
 }
 
 impl Worker {
@@ -37,6 +48,7 @@ impl Worker {
             name,
             num_threads,
             client,
+            status: RwLock::new(WorkerStatus::Running),
             child: Arc::new(RwLock::new(child)),
         }
     }
@@ -50,19 +62,42 @@ impl Worker {
         result
     }
 
+    pub fn is_running(&self) -> bool {
+        if let Ok(status) = self.status.read() {
+            return *status == WorkerStatus::Running;
+        }
+
+        false
+    }
+
+    pub fn close(&self) -> color_eyre::Result<()> {
+        let mut status = self.status.write().map_err(|e| eyre!(e.to_string()))?;
+        *status = WorkerStatus::Closing;
+
+        Ok(())
+    }
+
     pub async fn shutdown(&self) -> color_eyre::Result<()> {
-        let mut child = self
-            .child
-            .write()
-            .map_err(|_| eyre!("Failed to acquire write lock on child process"))?;
+        let child = self.child.clone();
 
-        child
-            .stdin
-            .as_mut()
-            .ok_or(eyre!("Failed to open stdin for child process"))?
-            .write_all(b"shutdown\n")?;
+        spawn_blocking::<_, color_eyre::Result<()>>(move || {
+            let mut child = child.write().map_err(|e| eyre!(e.to_string()))?;
+            child
+                .stdin
+                .as_mut()
+                .ok_or(eyre!("Failed to open stdin for child process"))?
+                .write_all(b"shutdown\n")?;
 
-        child.wait()?;
+            child.wait()?;
+
+            Ok(())
+        })
+        .await??;
+
+        {
+            let mut status = self.status.write().map_err(|e| eyre!(e.to_string()))?;
+            *status = WorkerStatus::Closed;
+        }
 
         Ok(())
     }

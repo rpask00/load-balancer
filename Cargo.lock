@@ -1376,6 +1376,7 @@ dependencies = [
  "rand 0.8.5",
  "ratatui",
  "reqwest",
+ "serde",
  "serde_json",
  "simplelog",
  "strum 0.26.3",

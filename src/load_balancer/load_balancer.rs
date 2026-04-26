@@ -11,8 +11,6 @@ use std::sync::Arc;
 pub struct LoadBalancer {
     pub workers: Vec<Arc<Worker>>,
     pub strategy: Box<dyn LoadBalancingStrategy>,
-    free_ports: Vec<u16>,
-    next_port: u16,
 }
 
 impl LoadBalancer {
@@ -20,8 +18,6 @@ impl LoadBalancer {
         Ok(LoadBalancer {
             workers: vec![],
             strategy,
-            free_ports: vec![],
-            next_port: 3000,
         })
     }
 
@@ -73,10 +69,8 @@ impl LoadBalancer {
     }
 
     pub fn close_worker(&mut self, worker_index: usize) {
-        let worker = self.workers.remove(worker_index);
-        std::thread::spawn(async move || {
-            worker.shutdown().await.expect("Failed to shutdown worker");
-        });
+        let worker = self.workers[worker_index].clone();
+        let _ = worker.close();
     }
 
     fn strategy_from_name(name: &str) -> Result<Box<dyn LoadBalancingStrategy>> {
@@ -91,5 +85,15 @@ impl LoadBalancer {
     pub fn set_strategy_handler(&mut self, strategy_name: &str) -> Result<()> {
         self.strategy = LoadBalancer::strategy_from_name(strategy_name)?;
         Ok(())
+    }
+
+    pub async fn prune_workers(&mut self) {
+        let workers = self.workers.extract_if(.., |worker| {
+            worker.is_running() || Arc::strong_count(worker) > 1
+        });
+
+        for worker in workers {
+            let _ = worker.shutdown().await;
+        }
     }
 }
