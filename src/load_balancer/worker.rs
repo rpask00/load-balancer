@@ -26,6 +26,7 @@ pub enum WorkerStatus {
     Running,
     Closing,
     Closed,
+    NotResponding,
     Unknown,
 }
 
@@ -68,6 +69,16 @@ impl Worker {
         }
 
         false
+    }
+
+    pub fn health_check(&self) {
+        if let Ok(mut child) = self.child.write() {
+            if !matches!(child.try_wait(), Ok(None)) {
+                if let Ok(mut status) = self.status.write() {
+                    *status = WorkerStatus::NotResponding;
+                }
+            }
+        }
     }
 
     pub fn close(&self) -> color_eyre::Result<()> {

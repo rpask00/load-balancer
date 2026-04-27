@@ -1,7 +1,7 @@
 use crate::load_balancer::strategy::least_connection::LeastConnectionStrategy;
 use crate::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use crate::load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
-use crate::load_balancer::worker::Worker;
+use crate::load_balancer::worker::{Worker, WorkerStatus};
 use axum::http::{Request, Uri};
 use color_eyre::eyre::{eyre, Result};
 use hyper::body::Incoming;
@@ -72,6 +72,11 @@ impl LoadBalancer {
         let worker = self.workers[worker_index].clone();
         let _ = worker.close();
     }
+    pub fn health_check(&self) {
+        for worker in &self.workers {
+            worker.health_check();
+        }
+    }
 
     fn strategy_from_name(name: &str) -> Result<Box<dyn LoadBalancingStrategy>> {
         match LoadBalancerStrategy::from_str(name)
@@ -89,7 +94,7 @@ impl LoadBalancer {
 
     pub async fn prune_workers(&mut self) {
         let workers = self.workers.extract_if(.., |worker| {
-            worker.is_running() || Arc::strong_count(worker) > 1
+            !(worker.is_running() || Arc::strong_count(worker) > 1 || *worker.status.read().unwrap() == WorkerStatus::NotResponding)
         });
 
         for worker in workers {

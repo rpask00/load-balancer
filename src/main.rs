@@ -15,13 +15,13 @@ use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use load_balancer::load_balancer::strategy::LoadBalancingStrategy;
 use load_balancer::tui::app::App;
 use load_balancer::tui::ui::draw;
-use log::LevelFilter;
+use log::{log, LevelFilter};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use simplelog::{Config, WriteLogger};
 use std::fs::File;
 use std::sync::RwLock;
-use std::thread::JoinHandle;
+use std::thread::{sleep, JoinHandle};
 use std::time::Duration;
 use std::{io, net::SocketAddr, sync::Arc};
 use tokio::{net::TcpListener, task};
@@ -108,7 +108,7 @@ async fn main() -> io::Result<()> {
 
     let load_balancer_ref = Arc::clone(&load_balancer);
     std::thread::spawn(move || {
-        for t in 0..1 {
+        for t in 0..5 {
             std::thread::sleep(Duration::from_secs(t));
 
             let num_threads: u8 = rand::random::<u8>() % 3 + 1;
@@ -121,7 +121,6 @@ async fn main() -> io::Result<()> {
         }
     });
 
-
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
 
     let listener = TcpListener::bind(addr)
@@ -130,7 +129,16 @@ async fn main() -> io::Result<()> {
 
     let mut app = App::new(load_balancer.clone());
 
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let load_balancer_ref = Arc::clone(&load_balancer);
     let _: JoinHandle<Result<()>> = std::thread::spawn(move || {
+        let mut last_prune = std::time::Instant::now();
+
         while !app.should_quit {
             terminal.draw(|f| draw(f, &mut app))?;
 
@@ -138,6 +146,19 @@ async fn main() -> io::Result<()> {
                 if let Ok(event) = event::read() {
                     let _ = app.handle_event(event);
                 }
+            }
+
+            if last_prune.elapsed() >= Duration::from_secs(1) {
+                let load_balancer_ref = load_balancer_ref.try_write();
+
+                if let Ok(mut load_balancer_ref) = load_balancer_ref {
+                    runtime.block_on(async {
+                        log::info!("Pruning workers...");
+                        load_balancer_ref.prune_workers().await;
+                    });
+                }
+
+                last_prune = std::time::Instant::now();
             }
         }
 
@@ -152,6 +173,13 @@ async fn main() -> io::Result<()> {
         Ok(())
     });
 
+    let load_balancer_ref = load_balancer.clone();
+    std::thread::spawn(move || loop {
+        load_balancer_ref.read().unwrap().health_check();
+        sleep(Duration::from_secs(5));
+    });
+    
+
     loop {
         let (stream, _) = listener.accept().await.expect("failed to accept");
         let load_balancer = load_balancer.clone();
@@ -161,7 +189,7 @@ async fn main() -> io::Result<()> {
             let service = service_fn(move |req| handle(req, load_balancer.clone()));
 
             if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
-                eprintln!("error: {}", e);
+                log::error!("{}", e);
             }
         });
     }
