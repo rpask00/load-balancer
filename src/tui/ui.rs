@@ -100,10 +100,10 @@ fn render_table(f: &mut Frame, area: Rect, app: &mut App) {
         .collect();
 
     let widths = [
-        Constraint::Percentage(30),
         Constraint::Percentage(20),
         Constraint::Percentage(20),
-        Constraint::Percentage(10),
+        Constraint::Percentage(20),
+        Constraint::Percentage(20),
         Constraint::Percentage(20),
     ];
 

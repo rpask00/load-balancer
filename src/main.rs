@@ -117,7 +117,7 @@ async fn main() -> io::Result<()> {
                 load_balancer
                     .write()
                     .expect("Could not get write lock on load_balancer")
-                    .spawn_worker(num_threads, "Worker x".to_string(), None);
+                    .spawn_worker(num_threads, format!("Worker {}", t+1), None);
             }
         }
     });
