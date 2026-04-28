@@ -1,10 +1,8 @@
 use crate::load_balancer::load_balancer::LoadBalancer;
 use crate::load_balancer::strategy::LoadBalancerStrategy;
-use crate::tui::{
-    component::{
-        add_item_menu::AddItemMenu, main_menu::MainMenu, mode_select_menu::ModeSelectMenu,
-        ComponentAction, HandleEvent,
-    },
+use crate::tui::component::{
+    add_item_menu::AddItemMenu, main_menu::MainMenu, mode_select_menu::ModeSelectMenu,
+    ComponentAction, HandleEvent,
 };
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind,
@@ -72,20 +70,7 @@ impl App {
             .write()
             .expect("Failed to lock load balancer for writing");
 
-        if index >= load_balancer.workers.len() {
-            drop(load_balancer);
-            return;
-        }
-
         load_balancer.close_worker(index);
-
-        let new_len = load_balancer.workers.len();
-        if new_len == 0 {
-            self.table_state.select(None);
-        } else {
-            let new_idx = index.saturating_sub(1).min(new_len.saturating_sub(1));
-            self.table_state.select(Some(new_idx));
-        }
     }
 
     pub fn delete_selected(&mut self) {

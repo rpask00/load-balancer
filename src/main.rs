@@ -89,9 +89,9 @@ async fn main() -> io::Result<()> {
     WriteLogger::init(
         LevelFilter::Info,
         Config::default(),
-        File::create("tui.log").unwrap(),
+        File::create("tui.log")?,
     )
-    .unwrap();
+    .expect("Failed to setup log system");
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -106,18 +106,69 @@ async fn main() -> io::Result<()> {
         LoadBalancer::new(default_strategy).expect("failed to create load balancer"),
     ));
 
-    let load_balancer_ref = Arc::clone(&load_balancer);
-    std::thread::spawn(move || {
-        for t in 0..5 {
-            std::thread::sleep(Duration::from_secs(t));
+    let _ = std::thread::spawn({
+        let load_balancer = Arc::clone(&load_balancer);
+        move || {
+            for t in 0..5 {
+                sleep(Duration::from_secs(t));
 
-            let num_threads: u8 = rand::random::<u8>() % 3 + 1;
+                let num_threads: u8 = rand::random::<u8>() % 3 + 1;
 
-            load_balancer_ref
-                .clone()
-                .write()
-                .expect("Could not get write lock on load_balancer")
-                .spawn_worker(num_threads, "Worker x".to_string(), None);
+                load_balancer
+                    .write()
+                    .expect("Could not get write lock on load_balancer")
+                    .spawn_worker(num_threads, "Worker x".to_string(), None);
+            }
+        }
+    });
+
+    let _: JoinHandle<Result<()>> = std::thread::spawn({
+        let load_balancer = Arc::clone(&load_balancer);
+        move || {
+            let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+
+            let mut app = App::new(Arc::clone(&load_balancer));
+            let mut last_prune = std::time::Instant::now();
+
+            while !app.should_quit {
+                terminal.draw(|f| draw(f, &mut app))?;
+
+                if event::poll(Duration::from_millis(100)).unwrap_or(false) {
+                    if let Ok(event) = event::read() {
+                        let _ = app.handle_event(event);
+                    }
+                }
+
+                if last_prune.elapsed() >= Duration::from_secs(1) {
+                    if let Ok(mut load_balancer) = load_balancer.try_write() {
+                        runtime.block_on(async {
+                            load_balancer.prune_workers().await;
+                        });
+                    }
+
+                    last_prune = std::time::Instant::now();
+                }
+            }
+
+            disable_raw_mode()?;
+
+            execute!(
+                terminal.backend_mut(),
+                LeaveAlternateScreen,
+                DisableMouseCapture
+            )?;
+
+            Ok(())
+        }
+    });
+
+    let _ = std::thread::spawn({
+        let load_balancer = Arc::clone(&load_balancer);
+        move || loop {
+            if let Ok(load_balancer) = load_balancer.try_read() {
+                load_balancer.health_check();
+            }
+            sleep(Duration::from_secs(5));
         }
     });
 
@@ -125,68 +176,15 @@ async fn main() -> io::Result<()> {
 
     let listener = TcpListener::bind(addr)
         .await
-        .expect("failed to bind TCP listener");
-
-    let mut app = App::new(load_balancer.clone());
-
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .unwrap();
-
-    let load_balancer_ref = Arc::clone(&load_balancer);
-    let _: JoinHandle<Result<()>> = std::thread::spawn(move || {
-        let mut last_prune = std::time::Instant::now();
-
-        while !app.should_quit {
-            terminal.draw(|f| draw(f, &mut app))?;
-
-            if event::poll(Duration::from_millis(100)).unwrap_or(false) {
-                if let Ok(event) = event::read() {
-                    let _ = app.handle_event(event);
-                }
-            }
-
-            if last_prune.elapsed() >= Duration::from_secs(1) {
-                let load_balancer_ref = load_balancer_ref.try_write();
-
-                if let Ok(mut load_balancer_ref) = load_balancer_ref {
-                    runtime.block_on(async {
-                        log::info!("Pruning workers...");
-                        load_balancer_ref.prune_workers().await;
-                    });
-                }
-
-                last_prune = std::time::Instant::now();
-            }
-        }
-
-        disable_raw_mode()?;
-
-        execute!(
-            terminal.backend_mut(),
-            LeaveAlternateScreen,
-            DisableMouseCapture
-        )?;
-
-        Ok(())
-    });
-
-    let load_balancer_ref = load_balancer.clone();
-    std::thread::spawn(move || loop {
-        load_balancer_ref.read().unwrap().health_check();
-        sleep(Duration::from_secs(5));
-    });
-    
+        .expect("Failed to bind TCP listener");
 
     loop {
-        let (stream, _) = listener.accept().await.expect("failed to accept");
-        let load_balancer = load_balancer.clone();
+        let (stream, _) = listener.accept().await?;
+        let load_balancer = Arc::clone(&load_balancer);
 
         task::spawn(async move {
             let io = TokioIo::new(stream);
-            let service = service_fn(move |req| handle(req, load_balancer.clone()));
+            let service = service_fn(move |req| handle(req, Arc::clone(&load_balancer)));
 
             if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
                 log::error!("{}", e);

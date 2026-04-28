@@ -1,9 +1,9 @@
 use crate::load_balancer::strategy::least_connection::LeastConnectionStrategy;
 use crate::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use crate::load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
-use crate::load_balancer::worker::{Worker, WorkerStatus};
+use crate::load_balancer::worker::Worker;
 use axum::http::{Request, Uri};
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::eyre;
 use hyper::body::Incoming;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -14,7 +14,7 @@ pub struct LoadBalancer {
 }
 
 impl LoadBalancer {
-    pub fn new(strategy: Box<dyn LoadBalancingStrategy>) -> Result<Self> {
+    pub fn new(strategy: Box<dyn LoadBalancingStrategy>) -> color_eyre::Result<Self> {
         Ok(LoadBalancer {
             workers: vec![],
             strategy,
@@ -69,16 +69,19 @@ impl LoadBalancer {
     }
 
     pub fn close_worker(&mut self, worker_index: usize) {
-        let worker = self.workers[worker_index].clone();
-        let _ = worker.close();
+        if worker_index < self.workers.len() {
+            let worker = self.workers[worker_index].clone();
+            let _ = worker.close();
+        }
     }
+
     pub fn health_check(&self) {
         for worker in &self.workers {
             worker.health_check();
         }
     }
 
-    fn strategy_from_name(name: &str) -> Result<Box<dyn LoadBalancingStrategy>> {
+    fn strategy_from_name(name: &str) -> color_eyre::Result<Box<dyn LoadBalancingStrategy>> {
         match LoadBalancerStrategy::from_str(name)
             .map_err(|_| eyre!("Unknown strategy name: {}", name))?
         {
@@ -87,17 +90,17 @@ impl LoadBalancer {
         }
     }
 
-    pub fn set_strategy_handler(&mut self, strategy_name: &str) -> Result<()> {
+    pub fn set_strategy_handler(&mut self, strategy_name: &str) -> color_eyre::Result<()> {
         self.strategy = LoadBalancer::strategy_from_name(strategy_name)?;
         Ok(())
     }
 
     pub async fn prune_workers(&mut self) {
-        let workers = self.workers.extract_if(.., |worker| {
-            !(worker.is_running() || Arc::strong_count(worker) > 1 || *worker.status.read().unwrap() == WorkerStatus::NotResponding)
+        let closed_workers = self.workers.extract_if(.., |worker| {
+            !worker.is_running() && Arc::strong_count(worker) == 1
         });
 
-        for worker in workers {
+        for worker in closed_workers {
             let _ = worker.shutdown().await;
         }
     }

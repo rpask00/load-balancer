@@ -64,11 +64,10 @@ impl Worker {
     }
 
     pub fn is_running(&self) -> bool {
-        if let Ok(status) = self.status.read() {
-            return *status == WorkerStatus::Running;
+        match self.status.read() {
+            Ok(status) => *status == WorkerStatus::Running,
+            Err(_) => false,
         }
-
-        false
     }
 
     pub fn health_check(&self) {
