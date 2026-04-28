@@ -19,16 +19,19 @@ impl LoadBalancingStrategy for RoundRobinStrategy {
             return Err(eyre!("There are no workers to select form!"));
         }
 
-        let mut current_worker_index_lock = self
+        let mut current_worker_index = self
             .current_worker_index
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
-        let workers_length = workers.iter().filter(|w| w.is_running()).count();
+        let running: Vec<&Arc<Worker>> = workers.iter().filter(|w| w.is_running()).collect();
 
-        *current_worker_index_lock = (*current_worker_index_lock + 1) % workers_length;
-        let current_worker = &workers[*current_worker_index_lock];
+        if running.is_empty() {
+            return Err(eyre!("No running workers available!"));
+        }
 
-        Ok(Arc::clone(current_worker))
+        *current_worker_index = (*current_worker_index + 1) % running.len();
+
+        Ok(Arc::clone(running[*current_worker_index]))
     }
 }
