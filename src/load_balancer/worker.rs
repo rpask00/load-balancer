@@ -63,6 +63,12 @@ impl Worker {
         result
     }
 
+    fn set_status(&self, status: WorkerStatus) -> color_eyre::Result<()> {
+        let mut status_guard = self.status.write().map_err(|e| eyre!(e.to_string()))?;
+        *status_guard = status;
+        Ok(())
+    }
+
     pub fn is_running(&self) -> bool {
         match self.status.read() {
             Ok(status) => *status == WorkerStatus::Running,
@@ -73,18 +79,13 @@ impl Worker {
     pub fn health_check(&self) {
         if let Ok(mut child) = self.child.write() {
             if !matches!(child.try_wait(), Ok(None)) {
-                if let Ok(mut status) = self.status.write() {
-                    *status = WorkerStatus::NotResponding;
-                }
+                let _ =  self.set_status(WorkerStatus::NotResponding);
             }
         }
     }
 
     pub fn close(&self) -> color_eyre::Result<()> {
-        let mut status = self.status.write().map_err(|e| eyre!(e.to_string()))?;
-        *status = WorkerStatus::Closing;
-
-        Ok(())
+        self.set_status(WorkerStatus::Closing)
     }
 
     pub async fn shutdown(&self) -> color_eyre::Result<()> {
@@ -104,10 +105,7 @@ impl Worker {
         })
         .await??;
 
-        {
-            let mut status = self.status.write().map_err(|e| eyre!(e.to_string()))?;
-            *status = WorkerStatus::Closed;
-        }
+        self.set_status(WorkerStatus::Closed)?;
 
         Ok(())
     }
