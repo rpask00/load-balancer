@@ -128,7 +128,6 @@ async fn main() -> io::Result<()> {
             let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 
             let mut app = App::new(Arc::clone(&load_balancer));
-            let mut last_prune = std::time::Instant::now();
 
             while !app.should_quit {
                 terminal.draw(|f| draw(f, &mut app))?;
@@ -139,14 +138,10 @@ async fn main() -> io::Result<()> {
                     }
                 }
 
-                if last_prune.elapsed() >= Duration::from_secs(1) {
-                    if let Ok(mut load_balancer) = load_balancer.try_write() {
-                        runtime.block_on(async {
-                            load_balancer.prune_workers().await;
-                        });
-                    }
-
-                    last_prune = std::time::Instant::now();
+                if let Ok(mut load_balancer) = load_balancer.try_write() {
+                    runtime.block_on(async {
+                        load_balancer.prune_workers().await;
+                    });
                 }
             }
 
