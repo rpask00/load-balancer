@@ -15,7 +15,7 @@ use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use load_balancer::load_balancer::strategy::LoadBalancingStrategy;
 use load_balancer::tui::app::App;
 use load_balancer::tui::ui::draw;
-use log::{log, LevelFilter};
+use log::LevelFilter;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use simplelog::{Config, WriteLogger};
@@ -114,10 +114,10 @@ async fn main() -> io::Result<()> {
 
                 let num_threads: u8 = rand::random::<u8>() % 3 + 1;
 
-                load_balancer
+                let _ = load_balancer
                     .write()
                     .expect("Could not get write lock on load_balancer")
-                    .spawn_worker(num_threads, format!("Worker {}", t+1), None);
+                    .spawn_worker(num_threads, format!("Worker {}", t + 1), None);
             }
         }
     });

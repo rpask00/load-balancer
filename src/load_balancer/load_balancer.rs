@@ -62,10 +62,12 @@ impl LoadBalancer {
         Ok(new_req)
     }
 
-    pub fn spawn_worker(&mut self, num_threads: u8, name: String, port: Option<u16>) {
+    pub fn spawn_worker(&mut self, num_threads: u8, name: String, port: Option<u16>) -> color_eyre::Result<()> {
         let port = port.unwrap_or_else(|| self.next_port());
-        self.workers
-            .push(Arc::new(Worker::new(name, port, num_threads)));
+        let worker = Worker::new(name, port, num_threads)?;
+        self.workers.push(Arc::new(worker));
+        
+        Ok(())
     }
 
     pub fn close_worker(&mut self, worker_index: usize) {

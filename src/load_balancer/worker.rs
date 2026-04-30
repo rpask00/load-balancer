@@ -31,7 +31,7 @@ pub enum WorkerStatus {
 }
 
 impl Worker {
-    pub fn new(name: String, port: u16, num_threads: u8) -> Self {
+    pub fn new(name: String, port: u16, num_threads: u8) -> color_eyre::Result<Self> {
         let connector = HttpConnector::new();
         let client = Client::builder(TokioExecutor::new()).build(connector);
 
@@ -41,17 +41,16 @@ impl Worker {
             .arg("--num-threads")
             .arg(num_threads.to_string())
             .stdin(Stdio::piped()) // open a pipe to child's stdin
-            .spawn()
-            .unwrap();
+            .spawn()?;
 
-        Worker {
+        Ok(Worker {
             port,
             name,
             num_threads,
             client,
             status: RwLock::new(WorkerStatus::Running),
             child: Arc::new(RwLock::new(child)),
-        }
+        })
     }
 
     pub async fn handle(&self, req: Request<Incoming>) -> Result<BoxBodyResponse, Error> {
@@ -79,7 +78,7 @@ impl Worker {
     pub fn health_check(&self) {
         if let Ok(mut child) = self.child.write() {
             if !matches!(child.try_wait(), Ok(None)) {
-                let _ =  self.set_status(WorkerStatus::NotResponding);
+                let _ = self.set_status(WorkerStatus::NotResponding);
             }
         }
     }

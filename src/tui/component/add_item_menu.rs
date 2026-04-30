@@ -17,8 +17,8 @@ pub struct AddItemMenu {
     pub port_input_area: Option<Rect>,
 }
 
-impl AddItemMenu {
-    pub fn new() -> Self {
+impl Default for AddItemMenu {
+    fn default() -> Self {
         Self {
             name: String::new(),
             port_str: String::new(),
@@ -29,17 +29,29 @@ impl AddItemMenu {
             port_input_area: None,
         }
     }
+}
+
+impl AddItemMenu {
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn submit(&mut self, load_balancer: &mut LoadBalancer, table_state: &mut TableState) {
-        self.port_error = false;
-        if let Ok(port) = self.port_str.parse::<u16>() {
-            if !self.name.is_empty() {
-                load_balancer.spawn_worker(1, self.name.clone(), Some(port));
-                table_state.select(Some(load_balancer.workers.len() - 1));
+        let port = self.port_str.parse::<u16>();
+        self.port_error = port.is_err();
+
+        if let Ok(port) = port {
+            if self.name.is_empty() {
                 return;
+            };
+
+            if load_balancer
+                .spawn_worker(1, self.name.clone(), Some(port))
+                .is_ok()
+            {
+                table_state.select(Some(load_balancer.workers.len() - 1));
             }
         }
-        self.port_error = true;
     }
 }
 
