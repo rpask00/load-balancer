@@ -50,7 +50,7 @@ async fn handle(
             worker
                 .handle(req)
                 .await
-                .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()))
+                .map(|res| res.map(|body| body.boxed()))
                 .map_err(|e| e.into())
         }
     }
