@@ -7,6 +7,7 @@ use color_eyre::eyre::eyre;
 use hyper::body::Incoming;
 use std::str::FromStr;
 use std::sync::Arc;
+use crate::config::FIRST_WORKER_PORT;
 
 pub struct LoadBalancer {
     pub workers: Vec<Arc<Worker>>,
@@ -22,7 +23,7 @@ impl LoadBalancer {
     }
 
     fn next_port(&self) -> u16 {
-        let mut port = 3000;
+        let mut port = FIRST_WORKER_PORT;
         let mut used_ports = self.workers.iter().map(|w| w.port).collect::<Vec<_>>();
         used_ports.sort();
 

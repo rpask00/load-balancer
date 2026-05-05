@@ -25,6 +25,7 @@ use std::thread::{sleep, JoinHandle};
 use std::time::Duration;
 use std::{io, net::SocketAddr, sync::Arc};
 use tokio::{net::TcpListener, task};
+use load_balancer::config::PORT;
 
 type BodyError = Box<dyn std::error::Error + Send + Sync>;
 type BoxBodyResponse = Response<BoxBody<Bytes, BodyError>>;
@@ -167,11 +168,11 @@ async fn main() -> io::Result<()> {
         }
     });
 
-    let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
+    let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], PORT));
 
     let listener = TcpListener::bind(addr)
         .await
-        .expect("Failed to bind TCP listener");
+        .unwrap_or_else(|_| panic!("Failed to bind TCP listener on port {}", PORT));
 
     let mut tui_done = task::spawn_blocking(move || tui_handle.join());
 
