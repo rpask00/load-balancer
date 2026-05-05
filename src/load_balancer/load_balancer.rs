@@ -52,8 +52,7 @@ impl LoadBalancer {
         let mut new_req = Request::builder()
             .method(req.method())
             .uri(new_uri)
-            .body(req.into_body())
-            .expect("Failed to build request");
+            .body(req.into_body())?;
 
         for (key, value) in headers.iter() {
             new_req.headers_mut().insert(key, value.clone());
