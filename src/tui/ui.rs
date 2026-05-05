@@ -46,7 +46,7 @@ fn render_header(f: &mut Frame, area: Rect, app: &mut App) {
     app.main_menu.delete_button_area = Some(header_layout[3]);
     app.main_menu.options_button_area = Some(header_layout[4]);
 
-    let title_text = format!("Load Balancer | {}", app.current_mode.as_str());
+    let title_text = format!("Load Balancer | {}", &app.current_mode);
     let title = Paragraph::new(title_text)
         .style(Style::default().fg(Color::Cyan).bold())
         .block(Block::default().borders(Borders::ALL));
@@ -239,7 +239,7 @@ fn render_mode_select_popup(f: &mut Frame, app: &mut App) {
             ])
             .split(inner);
 
-        let current_text = format!("Mode: {}", app.current_mode.as_str());
+        let current_text = format!("Mode: {}", &app.current_mode);
         let current = Paragraph::new(current_text).style(Style::default().fg(Color::Green).bold());
         f.render_widget(current, layout[0]);
 
