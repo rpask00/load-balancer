@@ -52,7 +52,7 @@ fn main() {
 
         let listener = TcpListener::bind(addr)
             .await
-            .unwrap_or_else(|_| panic!("failed to bind to {}", args.port));
+            .expect(&format!("failed to bind to {}", args.port));
 
         let shutdown_signal = async {
             loop {
