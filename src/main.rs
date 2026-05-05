@@ -10,6 +10,7 @@ use http_body_util::{BodyExt, Full};
 use hyper::server::conn::http1;
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response};
 use hyper_util::rt::TokioIo;
+use load_balancer::config::PORT;
 use load_balancer::load_balancer::load_balancer::LoadBalancer;
 use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use load_balancer::load_balancer::strategy::LoadBalancingStrategy;
@@ -25,7 +26,6 @@ use std::thread::{sleep, JoinHandle};
 use std::time::Duration;
 use std::{io, net::SocketAddr, sync::Arc};
 use tokio::{net::TcpListener, task};
-use load_balancer::config::PORT;
 
 type BodyError = Box<dyn std::error::Error + Send + Sync>;
 type BoxBodyResponse = Response<BoxBody<Bytes, BodyError>>;
@@ -85,6 +85,7 @@ async fn set_strategy_handler(
     )?)
 }
 
+#[allow(clippy::await_holding_lock)]
 #[tokio::main]
 async fn main() -> io::Result<()> {
     WriteLogger::init(
@@ -193,6 +194,11 @@ async fn main() -> io::Result<()> {
             }
             _ = &mut tui_done => break,
         }
+    }
+
+    if let Ok(mut load_balancer) = load_balancer.write() {
+        println!("Waiting for workers to exit...");
+        let _ = load_balancer.exit().await;
     }
 
     Ok(())

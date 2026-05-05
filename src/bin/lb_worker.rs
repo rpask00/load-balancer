@@ -31,7 +31,7 @@ async fn worker_handler(State(port): State<u16>, req: Request) -> String {
     );
 
     // tokio::time::sleep(Duration::from_secs(1)).await;
-    std::thread::sleep(Duration::from_secs(5));
+    std::thread::sleep(Duration::from_secs(1));
 
     message
 }

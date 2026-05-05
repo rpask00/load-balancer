@@ -9,6 +9,7 @@ use hyper::body::Incoming;
 use std::collections::VecDeque;
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::time::sleep;
 
 pub struct LoadBalancer {
     pub workers: Vec<Arc<Worker>>,
@@ -102,5 +103,18 @@ impl LoadBalancer {
             let _ = worker.shutdown().await;
             self.ports_pool.push_back(worker.port);
         }
+    }
+    
+    pub async fn exit(&mut self) -> color_eyre::Result<()> {
+        for worker in &mut self.workers {
+            worker.close()?;
+        }
+        
+        while !self.workers.is_empty() {
+            self.prune_workers().await;
+            sleep(std::time::Duration::from_millis(100)).await;
+        }
+        
+        Ok(())
     }
 }
