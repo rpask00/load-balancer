@@ -1,3 +1,4 @@
+use crate::config::{FIRST_WORKER_PORT, MAX_WORKERS_COUNT};
 use crate::load_balancer::strategy::least_connection::LeastConnectionStrategy;
 use crate::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use crate::load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
@@ -5,13 +6,14 @@ use crate::load_balancer::worker::Worker;
 use axum::http::{Request, Uri};
 use color_eyre::eyre::eyre;
 use hyper::body::Incoming;
+use std::collections::VecDeque;
 use std::str::FromStr;
 use std::sync::Arc;
-use crate::config::FIRST_WORKER_PORT;
 
 pub struct LoadBalancer {
     pub workers: Vec<Arc<Worker>>,
     pub strategy: Box<dyn LoadBalancingStrategy>,
+    ports_pool: VecDeque<u16>,
 }
 
 impl LoadBalancer {
@@ -19,22 +21,8 @@ impl LoadBalancer {
         Ok(LoadBalancer {
             workers: vec![],
             strategy,
+            ports_pool: (FIRST_WORKER_PORT..FIRST_WORKER_PORT + MAX_WORKERS_COUNT).collect(),
         })
-    }
-
-    fn next_port(&self) -> u16 {
-        let mut port = FIRST_WORKER_PORT;
-        let mut used_ports = self.workers.iter().map(|w| w.port).collect::<Vec<_>>();
-        used_ports.sort();
-
-        for used_port in used_ports {
-            if used_port != port {
-                return port;
-            };
-            port += 1;
-        }
-
-        port
     }
 
     pub fn prepare_request(
@@ -62,11 +50,19 @@ impl LoadBalancer {
         Ok(new_req)
     }
 
-    pub fn spawn_worker(&mut self, num_threads: u8, name: String, port: Option<u16>) -> color_eyre::Result<()> {
-        let port = port.unwrap_or_else(|| self.next_port());
+    pub fn spawn_worker(
+        &mut self,
+        num_threads: u8,
+        name: String,
+        port: Option<u16>,
+    ) -> color_eyre::Result<()> {
+        let port = port
+            .or_else(|| self.ports_pool.pop_front())
+            .ok_or_else(|| eyre!("No available ports to spawn new worker"))?;
+
         let worker = Worker::new(name, port, num_threads)?;
         self.workers.push(Arc::new(worker));
-        
+
         Ok(())
     }
 
@@ -104,6 +100,7 @@ impl LoadBalancer {
 
         for worker in closed_workers {
             let _ = worker.shutdown().await;
+            self.ports_pool.push_back(worker.port);
         }
     }
 }
