@@ -122,7 +122,7 @@ async fn main() -> io::Result<()> {
         }
     });
 
-    let _: JoinHandle<Result<()>> = std::thread::spawn({
+    let tui_handle: JoinHandle<Result<()>> = std::thread::spawn({
         let load_balancer = Arc::clone(&load_balancer);
         move || {
             let runtime = tokio::runtime::Builder::new_current_thread().build()?;
@@ -173,17 +173,26 @@ async fn main() -> io::Result<()> {
         .await
         .expect("Failed to bind TCP listener");
 
+    let mut tui_done = task::spawn_blocking(move || tui_handle.join());
+
     loop {
-        let (stream, _) = listener.accept().await?;
-        let load_balancer = Arc::clone(&load_balancer);
+        tokio::select! {
+            result = listener.accept() => {
+                let (stream, _) = result?;
+                let load_balancer = Arc::clone(&load_balancer);
 
-        task::spawn(async move {
-            let io = TokioIo::new(stream);
-            let service = service_fn(move |req| handle(req, Arc::clone(&load_balancer)));
+                task::spawn(async move {
+                    let io = TokioIo::new(stream);
+                    let service = service_fn(move |req| handle(req, Arc::clone(&load_balancer)));
 
-            if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
-                log::error!("{}", e);
+                    if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
+                        log::error!("{}", e);
+                    }
+                });
             }
-        });
+            _ = &mut tui_done => break,
+        }
     }
+
+    Ok(())
 }
