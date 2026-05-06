@@ -2,4 +2,4 @@
 src/bin/playground.rs
 .idea
 .vscode
-
+tui.log

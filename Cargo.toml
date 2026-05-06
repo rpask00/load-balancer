@@ -19,3 +19,18 @@ color-eyre = "0.6.5"
 strum = { version = "0.26", features = ["derive"] }
 axum = "0.8.8"
 clap = { version = "4", features = ["derive"] }
+crossterm = "0.29.0"
+ratatui = "0.30.0"
+log = "0.4"
+simplelog = "0.12"
+rand = "0.8"
+serde = { version = "1.0.228", features = ["derive"] }
+
+
+[[bin]]
+name = "playground"
+path = "src/bin/playground.rs"
+
+[[bin]]
+name = "lb_worker"
+path = "src/bin/lb_worker.rs"

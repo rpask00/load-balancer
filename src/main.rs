@@ -1,18 +1,30 @@
-mod load_balancer;
-mod strategy;
-mod worker;
-
-use crate::load_balancer::LoadBalancer;
-use crate::strategy::least_connection::LeastConnectionStrategy;
-use crate::strategy::LoadBalancingStrategy;
 use bytes::Bytes;
 use color_eyre::eyre::{eyre, Result};
-use http_body_util::{combinators::BoxBody, BodyExt, Full};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
+use crossterm::{event, execute};
+use http_body_util::combinators::BoxBody;
+use http_body_util::{BodyExt, Full};
 use hyper::server::conn::http1;
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response};
 use hyper_util::rt::TokioIo;
-use std::{net::SocketAddr, sync::Arc};
-use tokio::sync::RwLock;
+use load_balancer::config::PORT;
+use load_balancer::load_balancer::load_balancer::LoadBalancer;
+use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
+use load_balancer::load_balancer::strategy::LoadBalancingStrategy;
+use load_balancer::tui::app::App;
+use load_balancer::tui::ui::draw;
+use log::LevelFilter;
+use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
+use simplelog::{Config, WriteLogger};
+use std::fs::File;
+use std::sync::RwLock;
+use std::thread::{sleep, JoinHandle};
+use std::time::Duration;
+use std::{io, net::SocketAddr, sync::Arc};
 use tokio::{net::TcpListener, task};
 
 type BodyError = Box<dyn std::error::Error + Send + Sync>;
@@ -26,7 +38,10 @@ async fn handle(
         (&Method::POST, "/strategy") => set_strategy_handler(req, load_balancer).await,
         _ => {
             let (worker, req) = {
-                let lb_lock = load_balancer.read().await;
+                let lb_lock = load_balancer
+                    .read()
+                    .expect("Could not get read lock on load_balancer");
+
                 let worker = lb_lock.strategy.select_worker(&lb_lock.workers)?;
                 let req =
                     lb_lock.prepare_request(format!("http://localhost:{}", worker.port), req)?;
@@ -36,7 +51,7 @@ async fn handle(
             worker
                 .handle(req)
                 .await
-                .map(|res| res.map(|body| body.map_err(|e| e.into()).boxed()))
+                .map(|res| res.map(|body| body.boxed()))
                 .map_err(|e| e.into())
         }
     }
@@ -55,7 +70,7 @@ async fn set_strategy_handler(
 
     let result = load_balancer
         .write()
-        .await
+        .expect("Could not get write lock on load_balancer")
         .set_strategy_handler(strategy_name);
 
     let (status, response_msg) = match result.is_ok() {
@@ -70,40 +85,121 @@ async fn set_strategy_handler(
     )?)
 }
 
+#[allow(clippy::await_holding_lock)]
 #[tokio::main]
-async fn main() {
-    let default_strategy = Box::new(LeastConnectionStrategy::new());
-    // let default_strategy = Box::new(RoundRobinStrategy::new());
+async fn main() -> io::Result<()> {
+    WriteLogger::init(
+        LevelFilter::Info,
+        Config::default(),
+        File::create("tui.log")?,
+    )
+    .expect("Failed to setup log system");
+
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    // let default_strategy = Box::new(LeastConnectionStrategy::new());
+    let default_strategy = Box::new(RoundRobinStrategy::new());
 
     let load_balancer = Arc::new(RwLock::new(
         LoadBalancer::new(default_strategy).expect("failed to create load balancer"),
     ));
 
-    load_balancer.write().await.spawn_worker(5);
-    // load_balancer.write().await.spawn_worker(1);
-    // load_balancer.write().await.spawn_worker(1);
-    // load_balancer.write().await.spawn_worker(1);
-    // load_balancer.write().await.spawn_worker(1);
+    let _ = std::thread::spawn({
+        let load_balancer = Arc::clone(&load_balancer);
+        move || {
+            for t in 0..5 {
+                sleep(Duration::from_secs(t));
 
-    let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
+                let num_threads: u8 = rand::random::<u8>() % 3 + 1;
+
+                let _ = load_balancer
+                    .write()
+                    .expect("Could not get write lock on load_balancer")
+                    .spawn_worker(num_threads, format!("Worker {}", t + 1), None);
+            }
+        }
+    });
+
+    let tui_handle: JoinHandle<Result<()>> = std::thread::spawn({
+        let load_balancer = Arc::clone(&load_balancer);
+        move || {
+            let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+
+            let mut app = App::new(Arc::clone(&load_balancer));
+
+            while !app.should_quit {
+                terminal.draw(|f| draw(f, &mut app))?;
+
+                if event::poll(Duration::from_millis(100)).unwrap_or(false) {
+                    if let Ok(event) = event::read() {
+                        let _ = app.handle_event(event);
+                    }
+                }
+
+                if let Ok(mut load_balancer) = load_balancer.try_write() {
+                    runtime.block_on(async {
+                        load_balancer.prune_workers().await;
+                    });
+                }
+            }
+
+            disable_raw_mode()?;
+
+            execute!(
+                terminal.backend_mut(),
+                LeaveAlternateScreen,
+                DisableMouseCapture
+            )?;
+
+            Ok(())
+        }
+    });
+
+    let _ = std::thread::spawn({
+        let load_balancer = Arc::clone(&load_balancer);
+        move || loop {
+            if let Ok(load_balancer) = load_balancer.try_read() {
+                load_balancer.health_check();
+            }
+            sleep(Duration::from_secs(5));
+        }
+    });
+
+    let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], PORT));
 
     let listener = TcpListener::bind(addr)
         .await
-        .expect("failed to bind TCP listener");
+        .unwrap_or_else(|_| panic!("Failed to bind TCP listener on port {}", PORT));
 
-    println!("load balancer listening on http://{}", addr);
+    let mut tui_done = task::spawn_blocking(move || tui_handle.join());
 
     loop {
-        let (stream, _) = listener.accept().await.expect("failed to accept");
-        let load_balancer = load_balancer.clone();
+        tokio::select! {
+            result = listener.accept() => {
+                let (stream, _) = result?;
+                let load_balancer = Arc::clone(&load_balancer);
 
-        task::spawn(async move {
-            let io = TokioIo::new(stream);
-            let service = service_fn(move |req| handle(req, load_balancer.clone()));
+                task::spawn(async move {
+                    let io = TokioIo::new(stream);
+                    let service = service_fn(move |req| handle(req, Arc::clone(&load_balancer)));
 
-            if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
-                eprintln!("error: {}", e);
+                    if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
+                        log::error!("{}", e);
+                    }
+                });
             }
-        });
+            _ = &mut tui_done => break,
+        }
     }
+
+    if let Ok(mut load_balancer) = load_balancer.write() {
+        println!("Waiting for workers to exit...");
+        let _ = load_balancer.exit().await;
+    }
+
+    Ok(())
 }

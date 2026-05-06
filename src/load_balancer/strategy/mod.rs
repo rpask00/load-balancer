@@ -1,7 +1,7 @@
-use crate::worker::Worker;
+use crate::load_balancer::worker::Worker;
 use color_eyre::eyre::Result;
+use strum::{Display, EnumString, IntoStaticStr};
 use std::sync::Arc;
-use strum::EnumString;
 
 pub trait LoadBalancingStrategy: Send + Sync {
     fn new() -> Self
@@ -10,10 +10,11 @@ pub trait LoadBalancingStrategy: Send + Sync {
     fn select_worker(&self, workers: &Vec<Arc<Worker>>) -> Result<Arc<Worker>>;
 }
 
-#[derive(EnumString)]
-#[strum(serialize_all = "snake_case")]
+#[derive(Display, EnumString, IntoStaticStr, Clone)]
 pub enum LoadBalancerStrategy {
+    #[strum(serialize = "Round Robin")]
     RoundRobin,
+    #[strum(serialize = "Least Connections")]
     LeastConnections,
 }
 

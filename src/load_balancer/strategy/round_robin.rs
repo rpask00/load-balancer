@@ -1,5 +1,5 @@
-use crate::strategy::LoadBalancingStrategy;
-use crate::worker::Worker;
+use crate::load_balancer::strategy::LoadBalancingStrategy;
+use crate::load_balancer::worker::Worker;
 use color_eyre::eyre::{eyre, Result};
 use std::sync::{Arc, Mutex};
 
@@ -15,20 +15,24 @@ impl LoadBalancingStrategy for RoundRobinStrategy {
     }
 
     fn select_worker(&self, workers: &Vec<Arc<Worker>>) -> Result<Arc<Worker>> {
-        println!("{}", "Round Robin is selecting worker");
-
-        if workers.len() == 0 {
+        if workers.is_empty() {
             return Err(eyre!("There are no workers to select form!"));
         }
 
-        let mut current_worker_index_lock = self
+
+        let running: Vec<&Arc<Worker>> = workers.iter().filter(|w| w.is_running()).collect();
+
+        if running.is_empty() {
+            return Err(eyre!("No running workers available!"));
+        }
+
+        let mut current_worker_index = self
             .current_worker_index
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
-        *current_worker_index_lock = (*current_worker_index_lock + 1) % workers.len();
-        let current_worker = &workers[*current_worker_index_lock];
+        *current_worker_index = (*current_worker_index + 1) % running.len();
 
-        Ok(Arc::clone(current_worker))
+        Ok(Arc::clone(running[*current_worker_index]))
     }
 }

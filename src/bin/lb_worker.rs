@@ -31,7 +31,7 @@ async fn worker_handler(State(port): State<u16>, req: Request) -> String {
     );
 
     // tokio::time::sleep(Duration::from_secs(1)).await;
-    std::thread::sleep(Duration::from_secs(5));
+    std::thread::sleep(Duration::from_secs(1));
 
     message
 }
@@ -49,11 +49,10 @@ fn main() {
         let app = Router::new().fallback(worker_handler).with_state(args.port);
 
         let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
-        println!("worker listening on http://{}", addr);
 
         let listener = TcpListener::bind(addr)
             .await
-            .expect("failed to bind worker port");
+            .unwrap_or_else(|_| panic!("failed to bind to {}", args.port));
 
         let shutdown_signal = async {
             loop {
