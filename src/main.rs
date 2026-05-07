@@ -11,6 +11,7 @@ use hyper::server::conn::http1;
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response};
 use hyper_util::rt::TokioIo;
 use load_balancer::config::PORT;
+use load_balancer::load_balancer::decision_engine::{self, DecisionEngine};
 use load_balancer::load_balancer::load_balancer::LoadBalancer;
 use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use load_balancer::load_balancer::strategy::LoadBalancingStrategy;
@@ -165,6 +166,14 @@ async fn main() -> io::Result<()> {
             if let Ok(load_balancer) = load_balancer.try_read() {
                 load_balancer.health_check();
             }
+            sleep(Duration::from_secs(5));
+        }
+    });
+
+    let _ = std::thread::spawn({
+        let mut decision_engine = DecisionEngine::new(Arc::clone(&load_balancer));
+        move || loop {
+            decision_engine.select_strategy();
             sleep(Duration::from_secs(5));
         }
     });

@@ -1,7 +1,7 @@
 use crate::load_balancer::worker::Worker;
 use color_eyre::eyre::Result;
-use strum::{Display, EnumString, IntoStaticStr};
 use std::sync::Arc;
+use strum::{Display, EnumString, IntoStaticStr};
 
 pub trait LoadBalancingStrategy: Send + Sync {
     fn new() -> Self
