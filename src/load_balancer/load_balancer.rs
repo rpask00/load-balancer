@@ -80,7 +80,7 @@ impl LoadBalancer {
         }
     }
 
-    fn strategy_from_name(name: &str) -> color_eyre::Result<Box<dyn LoadBalancingStrategy>> {
+    pub fn strategy_from_name(name: &str) -> color_eyre::Result<Box<dyn LoadBalancingStrategy>> {
         match LoadBalancerStrategy::from_str(name)
             .map_err(|_| eyre!("Unknown strategy name: {}", name))?
         {
@@ -104,17 +104,17 @@ impl LoadBalancer {
             self.ports_pool.push_back(worker.port);
         }
     }
-    
+
     pub async fn exit(&mut self) -> color_eyre::Result<()> {
         for worker in &mut self.workers {
             worker.close()?;
         }
-        
+
         while !self.workers.is_empty() {
             self.prune_workers().await;
             sleep(std::time::Duration::from_millis(100)).await;
         }
-        
+
         Ok(())
     }
 }
