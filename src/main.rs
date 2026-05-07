@@ -21,10 +21,11 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use simplelog::{Config, WriteLogger};
 use std::fs::File;
-use std::sync::RwLock;
-use std::thread::{sleep, JoinHandle};
 use std::time::Duration;
 use std::{io, net::SocketAddr, sync::Arc};
+use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
+use tokio::time::sleep;
 use tokio::{net::TcpListener, task};
 
 type BodyError = Box<dyn std::error::Error + Send + Sync>;
@@ -38,9 +39,7 @@ async fn handle(
         (&Method::POST, "/strategy") => set_strategy_handler(req, load_balancer).await,
         _ => {
             let (worker, req) = {
-                let lb_lock = load_balancer
-                    .read()
-                    .expect("Could not get read lock on load_balancer");
+                let lb_lock = load_balancer.read().await;
 
                 let worker = lb_lock.strategy.select_worker(&lb_lock.workers)?;
                 let req =
@@ -70,7 +69,7 @@ async fn set_strategy_handler(
 
     let result = load_balancer
         .write()
-        .expect("Could not get write lock on load_balancer")
+        .await
         .set_strategy_handler(strategy_name);
 
     let (status, response_msg) = match result.is_ok() {
@@ -108,42 +107,39 @@ async fn main() -> io::Result<()> {
         LoadBalancer::new(default_strategy).expect("failed to create load balancer"),
     ));
 
-    let _ = std::thread::spawn({
+    task::spawn({
         let load_balancer = Arc::clone(&load_balancer);
-        move || {
+        async move {
             for t in 0..5 {
-                sleep(Duration::from_secs(t));
+                sleep(Duration::from_secs(t)).await;
 
                 let num_threads: u8 = rand::random::<u8>() % 3 + 1;
 
-                let _ = load_balancer
-                    .write()
-                    .expect("Could not get write lock on load_balancer")
-                    .spawn_worker(num_threads, format!("Worker {}", t + 1), None);
+                let _ = load_balancer.write().await.spawn_worker(
+                    num_threads,
+                    format!("Worker {}", t + 1),
+                    None,
+                );
             }
         }
     });
 
-    let tui_handle: JoinHandle<Result<()>> = std::thread::spawn({
+    let mut tui_handle: JoinHandle<Result<()>> = task::spawn({
         let load_balancer = Arc::clone(&load_balancer);
-        move || {
-            let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 
+        async move {
             let mut app = App::new(Arc::clone(&load_balancer));
-
             while !app.should_quit {
                 terminal.draw(|f| draw(f, &mut app))?;
 
                 if event::poll(Duration::from_millis(100)).unwrap_or(false) {
                     if let Ok(event) = event::read() {
-                        let _ = app.handle_event(event);
+                        let _ = app.handle_event(event).await;
                     }
                 }
 
                 if let Ok(mut load_balancer) = load_balancer.try_write() {
-                    runtime.block_on(async {
-                        load_balancer.prune_workers().await;
-                    });
+                    load_balancer.prune_workers().await;
                 }
             }
 
@@ -159,13 +155,15 @@ async fn main() -> io::Result<()> {
         }
     });
 
-    let _ = std::thread::spawn({
+    task::spawn({
         let load_balancer = Arc::clone(&load_balancer);
-        move || loop {
-            if let Ok(load_balancer) = load_balancer.try_read() {
-                load_balancer.health_check();
+        async move {
+            loop {
+                if let Ok(load_balancer) = load_balancer.try_read() {
+                    load_balancer.health_check();
+                }
+                sleep(Duration::from_secs(5)).await;
             }
-            sleep(Duration::from_secs(5));
         }
     });
 
@@ -174,8 +172,6 @@ async fn main() -> io::Result<()> {
     let listener = TcpListener::bind(addr)
         .await
         .unwrap_or_else(|_| panic!("Failed to bind TCP listener on port {}", PORT));
-
-    let mut tui_done = task::spawn_blocking(move || tui_handle.join());
 
     loop {
         tokio::select! {
@@ -192,14 +188,12 @@ async fn main() -> io::Result<()> {
                     }
                 });
             }
-            _ = &mut tui_done => break,
+            _ = &mut tui_handle => break,
         }
     }
 
-    if let Ok(mut load_balancer) = load_balancer.write() {
-        println!("Waiting for workers to exit...");
-        let _ = load_balancer.exit().await;
-    }
+    println!("Waiting for workers to exit...");
+    let _ = load_balancer.write().await.exit().await;
 
     Ok(())
 }

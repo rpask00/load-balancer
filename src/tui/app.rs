@@ -11,7 +11,8 @@ use ratatui::{
     layout::{Position, Rect},
     widgets::TableState,
 };
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub struct App {
     // app state vars
@@ -48,11 +49,8 @@ impl App {
         self.add_item_menu = None;
     }
 
-    pub fn submit_adding(&mut self) {
-        let mut load_balancer = self
-            .load_balancer
-            .write()
-            .expect("Failed to lock load balancer for writing");
+    pub async fn submit_adding(&mut self) {
+        let mut load_balancer = self.load_balancer.write().await;
 
         if let Some(menu) = &mut self.add_item_menu {
             menu.submit(&mut load_balancer, &mut self.table_state);
@@ -64,18 +62,18 @@ impl App {
         }
     }
 
-    pub fn delete_at(&mut self, index: usize) {
+    pub async fn delete_at(&mut self, index: usize) {
         let mut load_balancer = self
             .load_balancer
             .write()
-            .expect("Failed to lock load balancer for writing");
+            .await;
 
         load_balancer.close_worker(index);
     }
 
-    pub fn delete_selected(&mut self) {
+    pub async fn delete_selected(&mut self) {
         if let Some(i) = self.table_state.selected() {
-            self.delete_at(i);
+            self.delete_at(i).await;
         }
     }
 
@@ -91,7 +89,7 @@ impl App {
         self.mode_selector_menu = Some(ModeSelectMenu::new(&self.current_mode));
     }
 
-    pub fn confirm_mode_selection(&mut self) {
+    pub async fn confirm_mode_selection(&mut self) {
         if let Some(menu) = &mut self.mode_selector_menu {
             menu.confirm(&mut self.current_mode);
         }
@@ -99,9 +97,7 @@ impl App {
         let mut load_balancer = self
             .load_balancer
             .write()
-            .expect("Failed to lock load balancer for writing");
-
-
+            .await;
 
         load_balancer
             .set_strategy_handler((&self.current_mode).into())
@@ -114,19 +110,19 @@ impl App {
         self.mode_selector_menu = None;
     }
 
-    pub fn handle_event(&mut self, event: Event) -> bool {
+    pub async fn handle_event(&mut self, event: Event) -> bool {
         match event {
-            Event::Key(key) if key.kind == KeyEventKind::Press => self.handle_key_event(key),
+            Event::Key(key) if key.kind == KeyEventKind::Press => self.handle_key_event(key).await,
             Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
-                self.handle_mouse_event(mouse)
+                self.handle_mouse_event(mouse).await
             }
             _ => false,
         }
     }
 
-    fn handle_key_event(&mut self, key: KeyEvent) -> bool {
+    async fn handle_key_event(&mut self, key: KeyEvent) -> bool {
         if self.mode_selector_menu.is_some() {
-            self.handle_key_mode_selector(key);
+            self.handle_key_mode_selector(key).await;
             return true;
         }
         if self.options_menu.is_some() {
@@ -134,24 +130,24 @@ impl App {
             return true;
         }
         if self.add_item_menu.is_some() {
-            self.handle_key_add_menu(key);
+            self.handle_key_add_menu(key).await;
             return true;
         }
 
         let action = self.main_menu.handle_key(key);
-        self.apply_action(action);
+        self.apply_action(action).await;
         true
     }
 
-    fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
+    async fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
         let pos = Position::new(mouse.column, mouse.row);
 
         if self.mode_selector_menu.is_some() {
-            self.handle_mouse_mode_selector(pos);
+            self.handle_mouse_mode_selector(pos).await;
             return true;
         }
         if self.add_item_menu.is_some() {
-            self.handle_mouse_add_menu(pos);
+            self.handle_mouse_add_menu(pos).await;
             return true;
         }
         if self.options_menu.is_some() {
@@ -160,14 +156,14 @@ impl App {
         }
 
         let action = self.main_menu.handle_mouse(pos);
-        self.apply_action(action);
+        self.apply_action(action).await;
         true
     }
 
-    fn apply_action(&mut self, action: ComponentAction) {
+    async fn apply_action(&mut self, action: ComponentAction) {
         match action {
             ComponentAction::Quit => self.should_quit = true,
-            ComponentAction::DeleteSelected => self.delete_selected(),
+            ComponentAction::DeleteSelected => self.delete_selected().await,
             ComponentAction::StartAdding => self.start_adding(),
             ComponentAction::ToggleOptions => self.toggle_options_menu(),
             ComponentAction::TableSelectNext => self.table_state.select_next(),
@@ -177,45 +173,45 @@ impl App {
         }
     }
 
-    fn handle_key_mode_selector(&mut self, key: KeyEvent) {
+    async fn handle_key_mode_selector(&mut self, key: KeyEvent) {
         if let Some(menu) = &mut self.mode_selector_menu {
             let action = menu.handle_key(key);
             match action {
                 ComponentAction::Cancel => self.cancel_mode_selection(),
-                ComponentAction::Confirm => self.confirm_mode_selection(),
+                ComponentAction::Confirm => self.confirm_mode_selection().await,
                 _ => {}
             }
         }
     }
 
-    fn handle_key_add_menu(&mut self, key: KeyEvent) {
+    async fn handle_key_add_menu(&mut self, key: KeyEvent) {
         if let Some(menu) = &mut self.add_item_menu {
             let action = menu.handle_key(key);
             match action {
                 ComponentAction::Cancel => self.cancel_adding(),
-                ComponentAction::Submit => self.submit_adding(),
+                ComponentAction::Submit => self.submit_adding().await,
                 _ => {}
             }
         }
     }
 
-    fn handle_mouse_mode_selector(&mut self, pos: Position) {
+    async fn handle_mouse_mode_selector(&mut self, pos: Position) {
         if let Some(menu) = &mut self.mode_selector_menu {
             let action = menu.handle_mouse(pos);
             match action {
                 ComponentAction::Cancel => self.cancel_mode_selection(),
-                ComponentAction::Confirm => self.confirm_mode_selection(),
+                ComponentAction::Confirm => self.confirm_mode_selection().await,
                 _ => {}
             }
         }
     }
 
-    fn handle_mouse_add_menu(&mut self, pos: Position) {
+    async fn handle_mouse_add_menu(&mut self, pos: Position) {
         if let Some(menu) = &mut self.add_item_menu {
             let action = menu.handle_mouse(pos);
             match action {
                 ComponentAction::Cancel => self.cancel_adding(),
-                ComponentAction::Submit => self.submit_adding(),
+                ComponentAction::Submit => self.submit_adding().await,
                 _ => {}
             }
         }

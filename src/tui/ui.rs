@@ -68,18 +68,17 @@ fn render_header(f: &mut Frame, area: Rect, app: &mut App) {
     f.render_widget(options_btn, header_layout[4]);
 }
 
-fn render_table(f: &mut Frame, area: Rect, app: &mut App) {
+fn render_table(f: &mut Frame<'_>, area: Rect, app: &mut App) {
     app.main_menu.table_area = Some(area);
 
     let header = Row::new(["Name", "Port", "Strength", "Connections", "Status"])
         .style(Style::default().fg(Color::Yellow).bold())
         .bottom_margin(1);
 
-    let workers = &app
-        .load_balancer
-        .read()
-        .expect("Failed to lock load balancer for reading")
-        .workers;
+    let Ok(lb) = app.load_balancer.try_read() else {
+        return;
+    };
+    let workers = &lb.workers;
 
     let rows: Vec<Row> = workers
         .iter()
