@@ -7,7 +7,7 @@ pub trait LoadBalancingStrategy: Send + Sync {
     fn new() -> Self
     where
         Self: Sized;
-    fn select_worker(&self, workers: &Vec<Arc<Worker>>) -> Result<Arc<Worker>>;
+    fn select_worker(&self, workers: &[Arc<Worker>]) -> Result<Arc<Worker>>;
 }
 
 #[derive(Display, EnumString, IntoStaticStr, Clone)]
