@@ -15,7 +15,7 @@ use load_balancer::load_balancer::decision_engine::engine1::Engine1;
 use load_balancer::load_balancer::decision_engine::DecisionEngine;
 use load_balancer::load_balancer::load_balancer::LoadBalancer;
 use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
-use load_balancer::load_balancer::strategy::LoadBalancingStrategy;
+use load_balancer::load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
 use load_balancer::tui::app::App;
 use load_balancer::tui::ui::draw;
 use log::LevelFilter;
@@ -23,6 +23,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use simplelog::{Config, WriteLogger};
 use std::fs::File;
+use std::str::FromStr;
 use std::sync::RwLock;
 use std::thread::{sleep, JoinHandle};
 use std::time::Duration;
@@ -70,18 +71,15 @@ async fn set_strategy_handler(
         .as_str()
         .ok_or(eyre!("Strategy not found in request body!"))?;
 
-    let result = load_balancer
+    let strategy = LoadBalancerStrategy::from_str(strategy_name)?;
+
+    load_balancer
         .write()
-        .expect("Could not get write lock on load_balancer")
-        .set_strategy_handler(strategy_name);
+        .map_err(|e| eyre!(e.to_string()))?
+        .set_strategy_handler(strategy);
 
-    let (status, response_msg) = match result.is_ok() {
-        true => (200, "ok"),
-        false => (400, "unknown strategy"),
-    };
-
-    Ok(Response::builder().status(status).body(
-        Full::new(Bytes::from(response_msg))
+    Ok(Response::builder().status(200).body(
+        Full::new(Bytes::from("ok"))
             .map_err(|_| unreachable!())
             .boxed(),
     )?)

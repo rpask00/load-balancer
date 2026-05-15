@@ -80,18 +80,12 @@ impl LoadBalancer {
         }
     }
 
-    pub fn strategy_from_name(name: &str) -> color_eyre::Result<Box<dyn LoadBalancingStrategy>> {
-        match LoadBalancerStrategy::from_str(name)
-            .map_err(|_| eyre!("Unknown strategy name: {}", name))?
-        {
-            LoadBalancerStrategy::LeastConnections => Ok(Box::new(LeastConnectionStrategy::new())),
-            LoadBalancerStrategy::RoundRobin => Ok(Box::new(RoundRobinStrategy::new())),
-        }
-    }
 
-    pub fn set_strategy_handler(&mut self, strategy_name: &str) -> color_eyre::Result<()> {
-        self.strategy = LoadBalancer::strategy_from_name(strategy_name)?;
-        Ok(())
+    pub fn set_strategy_handler(&mut self, strategy: LoadBalancerStrategy) {
+        self.strategy = match strategy {
+            LoadBalancerStrategy::LeastConnections => Box::new(LeastConnectionStrategy::new()),
+            LoadBalancerStrategy::RoundRobin => Box::new(RoundRobinStrategy::new()),
+        };
     }
 
     pub async fn prune_workers(&mut self) {
