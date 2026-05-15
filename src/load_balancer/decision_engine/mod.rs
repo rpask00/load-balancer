@@ -7,7 +7,7 @@ use crate::load_balancer::strategy::LoadBalancingPolicy;
 pub trait DecisionEngine: Send + Sync {
     fn rules(&self) -> &[Box<Rule>];
 
-    fn select_strategy(&mut self, load_balancer: &mut LoadBalancer) {
+    fn select_strategy(&self, load_balancer: &mut LoadBalancer) {
         let mut final_strategy = LoadBalancingPolicy::RoundRobin;
         for rule in self.rules() {
             if let Some(s) = rule(load_balancer) {
@@ -15,7 +15,7 @@ pub trait DecisionEngine: Send + Sync {
             }
         }
 
-        load_balancer.set_strategy_handler(final_strategy)
+        load_balancer.set_strategy(final_strategy)
     }
 }
 

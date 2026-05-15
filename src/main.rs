@@ -76,7 +76,7 @@ async fn set_strategy_handler(
     load_balancer
         .write()
         .map_err(|e| eyre!(e.to_string()))?
-        .set_strategy_handler(strategy);
+        .set_strategy(strategy);
 
     Ok(Response::builder().status(200).body(
         Full::new(Bytes::from("ok"))
@@ -171,7 +171,7 @@ async fn main() -> io::Result<()> {
 
     let _ = std::thread::spawn({
         let load_balancer = Arc::clone(&load_balancer);
-        let mut decision_engine: Box<dyn DecisionEngine> = Box::new(Engine1::default());
+        let decision_engine: Box<dyn DecisionEngine> = Box::new(Engine1::default());
 
         move || loop {
             if let Ok(mut load_balancer) = load_balancer.try_write() {

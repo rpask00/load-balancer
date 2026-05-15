@@ -102,7 +102,7 @@ impl App {
             .expect("Failed to lock load balancer for writing");
 
 
-        load_balancer.set_strategy_handler(self.current_mode.clone());
+        load_balancer.set_strategy(self.current_mode.clone());
 
         self.mode_selector_menu = None;
     }

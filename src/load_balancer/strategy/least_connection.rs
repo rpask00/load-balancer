@@ -10,7 +10,7 @@ impl LoadBalancingStrategy for LeastConnectionStrategy {
         LeastConnectionStrategy {}
     }
 
-    fn select_worker(&self, workers: &Vec<Arc<Worker>>) -> Result<Arc<Worker>> {
+    fn select_worker(&self, workers: &[Arc<Worker>]) -> Result<Arc<Worker>> {
         if workers.is_empty() {
             return Err(eyre!("There are no workers to select form!"));
         }

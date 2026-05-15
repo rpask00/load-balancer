@@ -1,6 +1,4 @@
 use crate::config::{FIRST_WORKER_PORT, MAX_WORKERS_COUNT};
-use crate::load_balancer::strategy::least_connection::LeastConnectionStrategy;
-use crate::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use crate::load_balancer::strategy::{LoadBalancingPolicy, LoadBalancingStrategy};
 use crate::load_balancer::worker::Worker;
 use axum::http::{Request, Uri};
@@ -81,11 +79,8 @@ impl LoadBalancer {
     }
 
 
-    pub fn set_strategy_handler(&mut self, strategy: LoadBalancingPolicy) {
-        self.strategy = match strategy {
-            LoadBalancingPolicy::LeastConnections => Box::new(LeastConnectionStrategy::new()),
-            LoadBalancingPolicy::RoundRobin => Box::new(RoundRobinStrategy::new()),
-        };
+    pub fn set_strategy(&mut self, strategy: LoadBalancingPolicy) {
+        self.strategy = strategy.build();
     }
 
     pub async fn prune_workers(&mut self) {
