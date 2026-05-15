@@ -11,7 +11,7 @@ pub trait LoadBalancingStrategy: Send + Sync {
 }
 
 #[derive(Display, EnumString, IntoStaticStr, Clone)]
-pub enum LoadBalancerStrategy {
+pub enum LoadBalancingPolicy {
     #[strum(serialize = "Round Robin")]
     RoundRobin,
     #[strum(serialize = "Least Connections")]

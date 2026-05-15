@@ -15,7 +15,7 @@ use load_balancer::load_balancer::decision_engine::engine1::Engine1;
 use load_balancer::load_balancer::decision_engine::DecisionEngine;
 use load_balancer::load_balancer::load_balancer::LoadBalancer;
 use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
-use load_balancer::load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
+use load_balancer::load_balancer::strategy::{LoadBalancingPolicy, LoadBalancingStrategy};
 use load_balancer::tui::app::App;
 use load_balancer::tui::ui::draw;
 use log::LevelFilter;
@@ -71,7 +71,7 @@ async fn set_strategy_handler(
         .as_str()
         .ok_or(eyre!("Strategy not found in request body!"))?;
 
-    let strategy = LoadBalancerStrategy::from_str(strategy_name)?;
+    let strategy = LoadBalancingPolicy::from_str(strategy_name)?;
 
     load_balancer
         .write()

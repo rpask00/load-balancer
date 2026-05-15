@@ -1,5 +1,5 @@
 use crate::load_balancer::load_balancer::LoadBalancer;
-use crate::load_balancer::strategy::LoadBalancerStrategy;
+use crate::load_balancer::strategy::LoadBalancingPolicy;
 use crate::tui::component::{
     add_item_menu::AddItemMenu, main_menu::MainMenu, mode_select_menu::ModeSelectMenu,
     ComponentAction, HandleEvent,
@@ -17,7 +17,7 @@ pub struct App {
     // app state vars
     pub table_state: TableState,
     pub load_balancer: Arc<RwLock<LoadBalancer>>,
-    pub current_mode: LoadBalancerStrategy,
+    pub current_mode: LoadBalancingPolicy,
     pub should_quit: bool,
     // sub-components
     pub main_menu: MainMenu,
@@ -30,7 +30,7 @@ impl App {
     pub fn new(load_balancer: Arc<RwLock<LoadBalancer>>) -> Self {
         Self {
             table_state: TableState::default().with_selected(Some(0)),
-            current_mode: LoadBalancerStrategy::RoundRobin,
+            current_mode: LoadBalancingPolicy::RoundRobin,
             should_quit: false,
             load_balancer,
             main_menu: MainMenu::new(),
