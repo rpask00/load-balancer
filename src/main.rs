@@ -18,7 +18,7 @@ use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use load_balancer::load_balancer::strategy::{LoadBalancingPolicy, LoadBalancingStrategy};
 use load_balancer::tui::app::App;
 use load_balancer::tui::ui::draw;
-use log::LevelFilter;
+use log::{info, LevelFilter};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use simplelog::{Config, WriteLogger};
@@ -26,7 +26,7 @@ use std::fs::File;
 use std::str::FromStr;
 use std::sync::RwLock;
 use std::thread::{sleep, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{io, net::SocketAddr, sync::Arc};
 use tokio::{net::TcpListener, task};
 
@@ -95,12 +95,6 @@ async fn main() -> io::Result<()> {
     )
     .expect("Failed to setup log system");
 
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
     // let default_strategy = Box::new(LeastConnectionStrategy::new());
     let default_strategy = Box::new(RoundRobinStrategy::new());
 
@@ -127,23 +121,34 @@ async fn main() -> io::Result<()> {
     let tui_handle: JoinHandle<Result<()>> = std::thread::spawn({
         let load_balancer = Arc::clone(&load_balancer);
         move || {
+            enable_raw_mode()?;
+            let mut stdout = io::stdout();
+            execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+            let backend = CrosstermBackend::new(stdout);
+            let mut terminal = Terminal::new(backend)?;
+
             let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 
             let mut app = App::new(Arc::clone(&load_balancer));
 
+            let mut prune_throttle = Instant::now();
             while !app.should_quit {
                 terminal.draw(|f| draw(f, &mut app))?;
 
-                if event::poll(Duration::from_millis(100)).unwrap_or(false) {
+                while event::poll(Duration::from_millis(1)).unwrap_or(false) {
                     if let Ok(event) = event::read() {
                         let _ = app.handle_event(event);
                     }
                 }
 
-                if let Ok(mut load_balancer) = load_balancer.try_write() {
-                    runtime.block_on(async {
-                        load_balancer.prune_workers().await;
-                    });
+                if prune_throttle.elapsed() > Duration::from_secs(1) {
+                    if let Ok(mut load_balancer) = load_balancer.try_write() {
+                        runtime.block_on(async {
+                            load_balancer.prune_workers().await;
+                        });
+
+                        prune_throttle = Instant::now();
+                    }
                 }
             }
 
