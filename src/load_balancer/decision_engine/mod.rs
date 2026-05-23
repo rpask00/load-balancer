@@ -15,7 +15,7 @@ pub trait DecisionEngine: Send + Sync {
             }
         }
 
-        load_balancer.set_strategy(final_strategy)
+        let _ = load_balancer.set_strategy(final_strategy);
     }
 }
 

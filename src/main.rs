@@ -14,6 +14,7 @@ use load_balancer::config::PORT;
 use load_balancer::load_balancer::decision_engine::engine1::Engine1;
 use load_balancer::load_balancer::decision_engine::DecisionEngine;
 use load_balancer::load_balancer::load_balancer::LoadBalancer;
+use load_balancer::load_balancer::strategy::least_connection::LeastConnectionStrategy;
 use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
 use load_balancer::load_balancer::strategy::{LoadBalancingPolicy, LoadBalancingStrategy};
 use load_balancer::tui::app::App;
@@ -76,7 +77,7 @@ async fn set_strategy_handler(
     load_balancer
         .write()
         .map_err(|e| eyre!(e.to_string()))?
-        .set_strategy(strategy);
+        .set_strategy(strategy)?;
 
     Ok(Response::builder().status(200).body(
         Full::new(Bytes::from("ok"))
@@ -95,8 +96,7 @@ async fn main() -> io::Result<()> {
     )
     .expect("Failed to setup log system");
 
-    // let default_strategy = Box::new(LeastConnectionStrategy::new());
-    let default_strategy = Box::new(RoundRobinStrategy::new());
+    let default_strategy = LoadBalancingPolicy::LeastConnections;
 
     let load_balancer = Arc::new(RwLock::new(
         LoadBalancer::new(default_strategy).expect("failed to create load balancer"),

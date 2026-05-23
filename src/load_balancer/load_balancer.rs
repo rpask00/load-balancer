@@ -1,5 +1,7 @@
 use crate::config::{FIRST_WORKER_PORT, MAX_WORKERS_COUNT};
-use crate::load_balancer::strategy::{LoadBalancingPolicy, LoadBalancingStrategy};
+use crate::load_balancer::strategy::{
+    LoadBalancingPolicy, LoadBalancingStrategy, StrategyRegistry,
+};
 use crate::load_balancer::worker::Worker;
 use axum::http::{Request, Uri};
 use color_eyre::eyre::eyre;
@@ -12,14 +14,22 @@ use tokio::time::sleep;
 pub struct LoadBalancer {
     pub workers: Vec<Arc<Worker>>,
     pub strategy: Box<dyn LoadBalancingStrategy>,
+    strategy_registry: StrategyRegistry,
     ports_pool: VecDeque<u16>,
 }
 
 impl LoadBalancer {
-    pub fn new(strategy: Box<dyn LoadBalancingStrategy>) -> color_eyre::Result<Self> {
+    pub fn new(strategy_policy: LoadBalancingPolicy) -> color_eyre::Result<Self> {
+        let strategy_registry = StrategyRegistry::default();
+
+        let strategy = strategy_registry
+            .build(&strategy_policy)
+            .ok_or_else(|| eyre!("Failed to initialize load balancing strategy!"))?;
+
         Ok(LoadBalancer {
             workers: vec![],
             strategy,
+            strategy_registry,
             ports_pool: (FIRST_WORKER_PORT..FIRST_WORKER_PORT + MAX_WORKERS_COUNT).collect(),
         })
     }
@@ -78,9 +88,12 @@ impl LoadBalancer {
         }
     }
 
-
-    pub fn set_strategy(&mut self, strategy: LoadBalancingPolicy) {
-        self.strategy = strategy.build();
+    pub fn set_strategy(&mut self, strategy: LoadBalancingPolicy) -> color_eyre::Result<()> {
+        self.strategy = self
+            .strategy_registry
+            .build(&strategy)
+            .ok_or(eyre!("Failed to set strategy!"))?;
+        Ok(())
     }
 
     pub async fn prune_workers(&mut self) {
