@@ -262,6 +262,7 @@ fn render_mode_select_popup(f: &mut Frame, app: &mut App) {
                 Constraint::Length(1),
                 Constraint::Length(3),
                 Constraint::Length(3),
+                Constraint::Length(3),
             ])
             .split(inner);
 
@@ -285,6 +286,14 @@ fn render_mode_select_popup(f: &mut Frame, app: &mut App) {
         } else {
             Style::default()
         };
+        let ll_style = if menu.selection_index == 2 {
+            Style::default()
+                .fg(Color::Yellow)
+                .bold()
+                .add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default()
+        };
 
         let rr = Paragraph::new(if menu.selection_index == 0 {
             "▶ Round Robin"
@@ -298,9 +307,16 @@ fn render_mode_select_popup(f: &mut Frame, app: &mut App) {
             "  Least Connections"
         })
         .style(lc_style);
+        let ll = Paragraph::new(if menu.selection_index == 2 {
+            "▶ Least Load"
+        } else {
+            "  Least Load"
+        })
+        .style(ll_style);
 
         f.render_widget(rr, layout[2]);
         f.render_widget(lc, layout[3]);
+        f.render_widget(ll, layout[4]);
     }
 }
 
