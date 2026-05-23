@@ -47,7 +47,12 @@ fn render_header(f: &mut Frame, area: Rect, app: &mut App) {
     app.main_menu.delete_button_area = Some(header_layout[3]);
     app.main_menu.options_button_area = Some(header_layout[4]);
 
-    let title_text = format!("Load Balancer | {}", &app.current_mode);
+    let current_mode = match app.load_balancer.read() {
+        Ok(lb) => lb.strategy.policy().to_string(),
+        Err(_) => String::from(""),
+    };
+
+    let title_text = format!("Load Balancer | {}", &current_mode);
     let title = Paragraph::new(title_text)
         .style(Style::default().fg(Color::Cyan).bold())
         .block(Block::default().borders(Borders::ALL));

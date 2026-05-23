@@ -1,4 +1,4 @@
-use crate::load_balancer::strategy::LoadBalancingStrategy;
+use crate::load_balancer::strategy::{LoadBalancingPolicy, LoadBalancingStrategy};
 use crate::load_balancer::worker::Worker;
 use color_eyre::eyre::{eyre, Result};
 use std::sync::Arc;
@@ -6,6 +6,10 @@ use std::sync::Arc;
 pub struct LeastLoadStrategy {}
 
 impl LoadBalancingStrategy for LeastLoadStrategy {
+    fn policy(&self) -> LoadBalancingPolicy {
+        LoadBalancingPolicy::LeastConnections
+    }
+
     fn new() -> Self {
         LeastLoadStrategy {}
     }

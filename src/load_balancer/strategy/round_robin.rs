@@ -1,4 +1,4 @@
-use crate::load_balancer::strategy::LoadBalancingStrategy;
+use crate::load_balancer::strategy::{LoadBalancingPolicy, LoadBalancingStrategy};
 use crate::load_balancer::worker::Worker;
 use color_eyre::eyre::{eyre, Result};
 use std::sync::{Arc, Mutex};
@@ -8,6 +8,10 @@ pub struct RoundRobinStrategy {
 }
 
 impl LoadBalancingStrategy for RoundRobinStrategy {
+    fn policy(&self) -> LoadBalancingPolicy {
+        LoadBalancingPolicy::RoundRobin
+    }
+
     fn new() -> Self {
         RoundRobinStrategy {
             current_worker_index: Mutex::new(0),
@@ -18,7 +22,6 @@ impl LoadBalancingStrategy for RoundRobinStrategy {
         if workers.is_empty() {
             return Err(eyre!("There are no workers to select form!"));
         }
-
 
         let running: Vec<&Arc<Worker>> = workers.iter().filter(|w| w.is_running()).collect();
 

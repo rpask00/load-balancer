@@ -29,6 +29,8 @@ use std::sync::RwLock;
 use std::thread::{sleep, JoinHandle};
 use std::time::{Duration, Instant};
 use std::{io, net::SocketAddr, sync::Arc};
+use std::os::unix::prelude::CommandExt;
+use std::process::Command;
 use tokio::{net::TcpListener, task};
 
 type BodyError = Box<dyn std::error::Error + Send + Sync>;
@@ -105,10 +107,9 @@ async fn main() -> io::Result<()> {
     let _ = std::thread::spawn({
         let load_balancer = Arc::clone(&load_balancer);
         move || {
-            for t in 0..5 {
-                sleep(Duration::from_secs(t));
-
-                let num_threads: u8 = rand::random::<u8>() % 3 + 1;
+            for t in 0..25 {
+                // sleep(Duration::from_secs(1));
+                let num_threads: u8 = rand::random::<u8>() % 20 + 20;
 
                 let _ = load_balancer
                     .write()
@@ -179,10 +180,10 @@ async fn main() -> io::Result<()> {
         let decision_engine: Box<dyn DecisionEngine> = Box::new(Engine1::default());
 
         move || loop {
+            sleep(Duration::from_secs(5));
             if let Ok(mut load_balancer) = load_balancer.try_write() {
                 decision_engine.select_strategy(&mut load_balancer);
             }
-            sleep(Duration::from_secs(5));
         }
     });
 

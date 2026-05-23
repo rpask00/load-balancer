@@ -7,6 +7,7 @@ use std::sync::Arc;
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator, IntoStaticStr};
 
 pub trait LoadBalancingStrategy: Send + Sync {
+    fn policy(&self) -> LoadBalancingPolicy;
     fn new() -> Self
     where
         Self: Sized;

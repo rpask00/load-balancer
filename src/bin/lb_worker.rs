@@ -32,7 +32,7 @@ async fn worker_handler(State(port): State<u16>, req: Request) -> String {
 
     // tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let sleep_time: u16 = rand::random::<u16>() % 200 + 200;
+    let sleep_time: u16 = rand::random::<u16>() % 800 + 200;
     std::thread::sleep(Duration::from_millis(sleep_time as u64));
 
     message

@@ -4,6 +4,8 @@ pub mod engine2;
 use crate::load_balancer::load_balancer::LoadBalancer;
 use crate::load_balancer::strategy::LoadBalancingPolicy;
 
+pub type Rule = dyn Fn(&LoadBalancer) -> Option<LoadBalancingPolicy> + Send + Sync;
+
 pub trait DecisionEngine: Send + Sync {
     fn rules(&self) -> &[Box<Rule>];
 
@@ -18,5 +20,3 @@ pub trait DecisionEngine: Send + Sync {
         let _ = load_balancer.set_strategy(final_strategy);
     }
 }
-
-pub type Rule = dyn Fn(&LoadBalancer) -> Option<LoadBalancingPolicy> + Send + Sync;
