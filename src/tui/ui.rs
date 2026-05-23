@@ -2,6 +2,7 @@ use crate::tui::app::App;
 use std::sync::Arc;
 
 use crate::load_balancer::worker::WorkerStatus;
+use ratatui::text::{Line, Span};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
@@ -68,12 +69,35 @@ fn render_header(f: &mut Frame, area: Rect, app: &mut App) {
     f.render_widget(options_btn, header_layout[4]);
 }
 
+fn connection_bar(connections: usize, capacity: u8) -> Cell<'static> {
+    const BAR_WIDTH: usize = 90;
+    let ratio = if capacity == 0 {
+        0.0
+    } else {
+        (connections as f64 / capacity as f64).min(1.0)
+    };
+    let filled = (ratio * BAR_WIDTH as f64).round() as usize;
+
+    let spans: Vec<Span> = (0..BAR_WIDTH)
+        .map(|i| {
+            if i < filled {
+                Span::styled("█", Style::default().fg(Color::Green).dim())
+            } else {
+                Span::styled("░", Style::default().fg(Color::Red).dim())
+            }
+        })
+        .collect();
+
+    Cell::from(Line::from(spans))
+}
+
 fn render_table(f: &mut Frame, area: Rect, app: &mut App) {
     app.main_menu.table_area = Some(area);
 
-    let header = Row::new(["Name", "Port", "Strength", "Connections", "Status"])
+    let header = Row::new(["Port", "Threads", "Status", "Load"])
         .style(Style::default().fg(Color::Yellow).bold())
-        .bottom_margin(1);
+        .bottom_margin(1)
+        .top_margin(1);
 
     let workers = &app
         .load_balancer
@@ -90,21 +114,23 @@ fn render_table(f: &mut Frame, area: Rect, app: &mut App) {
             };
 
             Row::new(vec![
-                Cell::from(worker.name.as_str()),
                 Cell::from(worker.port.to_string()),
                 Cell::from(worker.num_threads.to_string()),
-                Cell::from((Arc::strong_count(worker) - 1).to_string()),
                 Cell::from(status.to_string()),
+                connection_bar(Arc::strong_count(worker) - 1, worker.num_threads),
+                Cell::from(Arc::strong_count(worker).to_string()),
             ])
+            .height(1)
+            .bottom_margin(0)
         })
         .collect();
 
     let widths = [
-        Constraint::Percentage(20),
-        Constraint::Percentage(20),
-        Constraint::Percentage(20),
-        Constraint::Percentage(20),
-        Constraint::Percentage(20),
+        Constraint::Percentage(10),
+        Constraint::Percentage(10),
+        Constraint::Percentage(10),
+        Constraint::Percentage(65),
+        Constraint::Percentage(5),
     ];
 
     let table = Table::new(rows, widths)
