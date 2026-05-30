@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Position, Rect};
-use crate::load_balancer::strategy::LoadBalancerStrategy;
+use crate::load_balancer::strategy::LoadBalancingPolicy;
 use super::{ComponentAction, HandleEvent};
 
 pub struct ModeSelectMenu {
@@ -9,10 +9,11 @@ pub struct ModeSelectMenu {
 }
 
 impl ModeSelectMenu {
-    pub fn new(current_mode: &LoadBalancerStrategy) -> Self {
+    pub fn new(current_mode: &LoadBalancingPolicy) -> Self {
         let selection_index = match current_mode {
-            LoadBalancerStrategy::RoundRobin => 0,
-            LoadBalancerStrategy::LeastConnections => 1,
+            LoadBalancingPolicy::RoundRobin => 0,
+            LoadBalancingPolicy::LeastConnections => 1,
+            LoadBalancingPolicy::LeastLoad => 2,
         };
         Self {
             selection_index,
@@ -20,11 +21,11 @@ impl ModeSelectMenu {
         }
     }
 
-    pub fn confirm(&mut self, current_mode: &mut LoadBalancerStrategy) {
-        *current_mode = if self.selection_index == 0 {
-            LoadBalancerStrategy::RoundRobin
-        } else {
-            LoadBalancerStrategy::LeastConnections
+    pub fn confirm(&mut self, current_mode: &mut LoadBalancingPolicy) {
+        *current_mode = match self.selection_index {
+            0 => LoadBalancingPolicy::RoundRobin,
+            1 => LoadBalancingPolicy::LeastConnections,
+            _ => LoadBalancingPolicy::LeastLoad,
         };
     }
 }
@@ -35,11 +36,11 @@ impl HandleEvent for ModeSelectMenu {
             KeyCode::Esc => ComponentAction::Cancel,
             KeyCode::Enter => ComponentAction::Confirm,
             KeyCode::Down | KeyCode::Char('j') => {
-                self.selection_index = (self.selection_index + 1) % 2;
+                self.selection_index = (self.selection_index + 1) % 3;
                 ComponentAction::Continue
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                self.selection_index = if self.selection_index == 0 { 1 } else { 0 };
+                self.selection_index = if self.selection_index == 0 { 2 } else { self.selection_index - 1 };
                 ComponentAction::Continue
             }
             _ => ComponentAction::Continue,
@@ -55,6 +56,9 @@ impl HandleEvent for ModeSelectMenu {
                     return ComponentAction::Confirm;
                 } else if relative_y == 5 {
                     self.selection_index = 1;
+                    return ComponentAction::Confirm;
+                } else if relative_y == 8 {
+                    self.selection_index = 2;
                     return ComponentAction::Confirm;
                 }
             } else {

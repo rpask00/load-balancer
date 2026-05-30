@@ -11,20 +11,26 @@ use hyper::server::conn::http1;
 use hyper::{body::Incoming, service::service_fn, Method, Request, Response};
 use hyper_util::rt::TokioIo;
 use load_balancer::config::PORT;
+use load_balancer::load_balancer::decision_engine::engine1::Engine1;
+use load_balancer::load_balancer::decision_engine::DecisionEngine;
 use load_balancer::load_balancer::load_balancer::LoadBalancer;
+use load_balancer::load_balancer::strategy::least_connection::LeastConnectionStrategy;
 use load_balancer::load_balancer::strategy::round_robin::RoundRobinStrategy;
-use load_balancer::load_balancer::strategy::LoadBalancingStrategy;
+use load_balancer::load_balancer::strategy::{LoadBalancingPolicy, LoadBalancingStrategy};
 use load_balancer::tui::app::App;
 use load_balancer::tui::ui::draw;
-use log::LevelFilter;
+use log::{info, LevelFilter};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use simplelog::{Config, WriteLogger};
 use std::fs::File;
+use std::str::FromStr;
 use std::sync::RwLock;
 use std::thread::{sleep, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{io, net::SocketAddr, sync::Arc};
+use std::os::unix::prelude::CommandExt;
+use std::process::Command;
 use tokio::{net::TcpListener, task};
 
 type BodyError = Box<dyn std::error::Error + Send + Sync>;
@@ -68,18 +74,15 @@ async fn set_strategy_handler(
         .as_str()
         .ok_or(eyre!("Strategy not found in request body!"))?;
 
-    let result = load_balancer
+    let strategy = LoadBalancingPolicy::from_str(strategy_name)?;
+
+    load_balancer
         .write()
-        .expect("Could not get write lock on load_balancer")
-        .set_strategy_handler(strategy_name);
+        .map_err(|e| eyre!(e.to_string()))?
+        .set_strategy(strategy)?;
 
-    let (status, response_msg) = match result.is_ok() {
-        true => (200, "ok"),
-        false => (400, "unknown strategy"),
-    };
-
-    Ok(Response::builder().status(status).body(
-        Full::new(Bytes::from(response_msg))
+    Ok(Response::builder().status(200).body(
+        Full::new(Bytes::from("ok"))
             .map_err(|_| unreachable!())
             .boxed(),
     )?)
@@ -95,14 +98,7 @@ async fn main() -> io::Result<()> {
     )
     .expect("Failed to setup log system");
 
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    // let default_strategy = Box::new(LeastConnectionStrategy::new());
-    let default_strategy = Box::new(RoundRobinStrategy::new());
+    let default_strategy = LoadBalancingPolicy::LeastConnections;
 
     let load_balancer = Arc::new(RwLock::new(
         LoadBalancer::new(default_strategy).expect("failed to create load balancer"),
@@ -111,10 +107,9 @@ async fn main() -> io::Result<()> {
     let _ = std::thread::spawn({
         let load_balancer = Arc::clone(&load_balancer);
         move || {
-            for t in 0..5 {
-                sleep(Duration::from_secs(t));
-
-                let num_threads: u8 = rand::random::<u8>() % 3 + 1;
+            for t in 0..25 {
+                // sleep(Duration::from_secs(1));
+                let num_threads: u8 = rand::random::<u8>() % 20 + 20;
 
                 let _ = load_balancer
                     .write()
@@ -127,23 +122,34 @@ async fn main() -> io::Result<()> {
     let tui_handle: JoinHandle<Result<()>> = std::thread::spawn({
         let load_balancer = Arc::clone(&load_balancer);
         move || {
+            enable_raw_mode()?;
+            let mut stdout = io::stdout();
+            execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+            let backend = CrosstermBackend::new(stdout);
+            let mut terminal = Terminal::new(backend)?;
+
             let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 
             let mut app = App::new(Arc::clone(&load_balancer));
 
+            let mut prune_throttle = Instant::now();
             while !app.should_quit {
                 terminal.draw(|f| draw(f, &mut app))?;
 
-                if event::poll(Duration::from_millis(100)).unwrap_or(false) {
+                while event::poll(Duration::from_millis(1)).unwrap_or(false) {
                     if let Ok(event) = event::read() {
                         let _ = app.handle_event(event);
                     }
                 }
 
-                if let Ok(mut load_balancer) = load_balancer.try_write() {
-                    runtime.block_on(async {
-                        load_balancer.prune_workers().await;
-                    });
+                if prune_throttle.elapsed() > Duration::from_secs(1) {
+                    if let Ok(mut load_balancer) = load_balancer.try_write() {
+                        runtime.block_on(async {
+                            load_balancer.prune_workers().await;
+                        });
+
+                        prune_throttle = Instant::now();
+                    }
                 }
             }
 
@@ -166,6 +172,18 @@ async fn main() -> io::Result<()> {
                 load_balancer.health_check();
             }
             sleep(Duration::from_secs(5));
+        }
+    });
+
+    let _ = std::thread::spawn({
+        let load_balancer = Arc::clone(&load_balancer);
+        let decision_engine: Box<dyn DecisionEngine> = Box::new(Engine1::default());
+
+        move || loop {
+            sleep(Duration::from_secs(5));
+            if let Ok(mut load_balancer) = load_balancer.try_write() {
+                decision_engine.select_strategy(&mut load_balancer);
+            }
         }
     });
 

@@ -1,7 +1,7 @@
 use crate::config::{FIRST_WORKER_PORT, MAX_WORKERS_COUNT};
-use crate::load_balancer::strategy::least_connection::LeastConnectionStrategy;
-use crate::load_balancer::strategy::round_robin::RoundRobinStrategy;
-use crate::load_balancer::strategy::{LoadBalancerStrategy, LoadBalancingStrategy};
+use crate::load_balancer::strategy::{
+    LoadBalancingPolicy, LoadBalancingStrategy, StrategyRegistry,
+};
 use crate::load_balancer::worker::Worker;
 use axum::http::{Request, Uri};
 use color_eyre::eyre::eyre;
@@ -14,14 +14,22 @@ use tokio::time::sleep;
 pub struct LoadBalancer {
     pub workers: Vec<Arc<Worker>>,
     pub strategy: Box<dyn LoadBalancingStrategy>,
+    strategy_registry: StrategyRegistry,
     ports_pool: VecDeque<u16>,
 }
 
 impl LoadBalancer {
-    pub fn new(strategy: Box<dyn LoadBalancingStrategy>) -> color_eyre::Result<Self> {
+    pub fn new(strategy_policy: LoadBalancingPolicy) -> color_eyre::Result<Self> {
+        let strategy_registry = StrategyRegistry::default();
+
+        let strategy = strategy_registry
+            .build(&strategy_policy)
+            .ok_or_else(|| eyre!("Failed to initialize load balancing strategy!"))?;
+
         Ok(LoadBalancer {
             workers: vec![],
             strategy,
+            strategy_registry,
             ports_pool: (FIRST_WORKER_PORT..FIRST_WORKER_PORT + MAX_WORKERS_COUNT).collect(),
         })
     }
@@ -80,17 +88,11 @@ impl LoadBalancer {
         }
     }
 
-    fn strategy_from_name(name: &str) -> color_eyre::Result<Box<dyn LoadBalancingStrategy>> {
-        match LoadBalancerStrategy::from_str(name)
-            .map_err(|_| eyre!("Unknown strategy name: {}", name))?
-        {
-            LoadBalancerStrategy::LeastConnections => Ok(Box::new(LeastConnectionStrategy::new())),
-            LoadBalancerStrategy::RoundRobin => Ok(Box::new(RoundRobinStrategy::new())),
-        }
-    }
-
-    pub fn set_strategy_handler(&mut self, strategy_name: &str) -> color_eyre::Result<()> {
-        self.strategy = LoadBalancer::strategy_from_name(strategy_name)?;
+    pub fn set_strategy(&mut self, strategy: LoadBalancingPolicy) -> color_eyre::Result<()> {
+        self.strategy = self
+            .strategy_registry
+            .build(&strategy)
+            .ok_or(eyre!("Failed to set strategy!"))?;
         Ok(())
     }
 
@@ -104,17 +106,17 @@ impl LoadBalancer {
             self.ports_pool.push_back(worker.port);
         }
     }
-    
+
     pub async fn exit(&mut self) -> color_eyre::Result<()> {
         for worker in &mut self.workers {
             worker.close()?;
         }
-        
+
         while !self.workers.is_empty() {
             self.prune_workers().await;
             sleep(std::time::Duration::from_millis(100)).await;
         }
-        
+
         Ok(())
     }
 }
