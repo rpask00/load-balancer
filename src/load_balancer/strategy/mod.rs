@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::load_balancer::strategy::least_connection::LeastConnectionStrategy;
 use crate::load_balancer::strategy::least_load::LeastLoadStrategy;
 use crate::load_balancer::strategy::round_robin::RoundRobinStrategy;
@@ -14,7 +15,7 @@ pub trait LoadBalancingStrategy: Send + Sync {
     fn select_worker(&self, workers: &[Arc<Worker>]) -> Result<Arc<Worker>>;
 }
 
-#[derive(Display, EnumString, EnumIter, IntoStaticStr, Clone, PartialEq)]
+#[derive(Display, EnumString, EnumIter, IntoStaticStr, Clone, PartialEq, Eq, Hash)]
 pub enum LoadBalancingPolicy {
     #[strum(serialize = "Round Robin")]
     RoundRobin,
@@ -27,12 +28,12 @@ pub enum LoadBalancingPolicy {
 type StrategyConstructor = Box<dyn Fn() -> Box<dyn LoadBalancingStrategy> + Send + Sync>;
 
 pub struct StrategyRegistry {
-    entries: Vec<(LoadBalancingPolicy, StrategyConstructor)>,
+    entries: HashMap<LoadBalancingPolicy, StrategyConstructor>,
 }
 
 impl StrategyRegistry {
     pub fn new() -> Self {
-        Self { entries: vec![] }
+        Self { entries: HashMap::new() }
     }
 
     pub fn register(
@@ -40,14 +41,13 @@ impl StrategyRegistry {
         policy: LoadBalancingPolicy,
         ctor: impl Fn() -> Box<dyn LoadBalancingStrategy> + Send + Sync + 'static,
     ) {
-        self.entries.push((policy, Box::new(ctor)));
+        self.entries.insert(policy, Box::new(ctor));
     }
 
     pub fn build(&self, policy: &LoadBalancingPolicy) -> Option<Box<dyn LoadBalancingStrategy>> {
         self.entries
-            .iter()
-            .find(|(p, _)| p == policy)
-            .map(|(_, ctor)| ctor())
+            .get(policy)
+            .map(|ctor| ctor())
     }
 }
 
@@ -55,8 +55,8 @@ impl Default for StrategyRegistry {
     fn default() -> Self {
         let mut registry = Self::new();
 
-        for v in LoadBalancingPolicy::iter() {
-            registry.register(v.clone(), move || match v {
+        for policy in LoadBalancingPolicy::iter() {
+            registry.register(policy.clone(), move || match policy {
                 LoadBalancingPolicy::RoundRobin => Box::new(RoundRobinStrategy::new()),
                 LoadBalancingPolicy::LeastConnections => Box::new(LeastConnectionStrategy::new()),
                 LoadBalancingPolicy::LeastLoad => Box::new(LeastLoadStrategy::new()),
