@@ -6,8 +6,7 @@ managing backend workers and switching balancing strategies on the fly.
 The balancer accepts HTTP requests, picks a backend worker according to the
 active strategy, and reverse-proxies the request to it. Backends ("workers") are
 real OS child processes that the balancer spawns, monitors, and tears down at
-runtime. An optional **decision engine** can also re-select the active strategy
-automatically based on runtime conditions.
+runtime. 
 
 <img width="1697" height="789" alt="Peek 2026-06-19 15-29" src="https://github.com/user-attachments/assets/35f4c6fa-81ed-4c5c-aa5f-37feda980a52" />
 
